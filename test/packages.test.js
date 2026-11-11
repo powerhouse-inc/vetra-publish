@@ -40,27 +40,35 @@ test('publishableDirs skips missing, private and unnamed packages', () => {
   assert.equal(warnings.length, 3);
 });
 
-test('publishPackages stamps the version, packs, publishes under the tag, and removes its .npmrc', () => {
-  const root = project({ a: { name: '@acme/a', version: '0.0.0' } });
+test('publishPackages stamps the version, packs, publishes under the tag, and cleans up', () => {
+  const root = project({ a: { name: '@acme/a', version: '0.0.0', dependencies: { x: 'workspace:*' } } });
   const dir = path.join(root, 'a');
   const calls = [];
+  let npmrc = '';
   const exec = (cmd, args, opts) => {
-    calls.push([cmd, ...args].join(' '));
+    calls.push([cmd, ...args].join(' ').replace(/--userconfig \S+/, '--userconfig NPMRC'));
     assert.equal(opts.cwd, dir);
-    if (args[0] === 'view') return '';
-    if (args[0] === 'pack') return 'acme-a-1.5.0.tgz\n';
+    if (args.includes('--userconfig')) npmrc = args[args.indexOf('--userconfig') + 1];
+    if (args[0] === 'view') throw new Error("npm error code E404\nnpm error 404 Not Found");
+    if (args[0] === 'pack') {
+      assert.deepEqual(fs.readdirSync(dir).filter((f) => f.includes('npmrc')), [], 'no npmrc in the package dir while packing');
+      assert.equal(JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')).version, '1.5.0');
+      fs.writeFileSync(path.join(dir, 'acme-a-1.5.0.tgz'), 'x');
+      return 'acme-a-1.5.0.tgz\n';
+    }
+    if (args[0] === 'publish') assert.ok(fs.existsSync(npmrc));
     return '';
   };
   const out = publishPackages({ dirs: [{ dir, name: '@acme/a' }], version: '1.5.0', registryUrl: 'https://registry.vetra.io/', distTag: 'latest', token: 'tok' }, exec, () => {});
   assert.deepEqual(out, [{ name: '@acme/a', version: '1.5.0' }]);
-  const npmrc = path.join(dir, '.npmrc.vetra-publish');
   assert.deepEqual(calls, [
-    `npm view @acme/a@1.5.0 version --registry https://registry.vetra.io --userconfig ${npmrc}`,
-    'npm version 1.5.0 --no-git-tag-version --allow-same-version',
+    'npm view @acme/a@1.5.0 version --registry https://registry.vetra.io --userconfig NPMRC',
     'pnpm pack',
-    `npm publish ${path.join(dir, 'acme-a-1.5.0.tgz')} --registry https://registry.vetra.io --tag latest --userconfig ${npmrc}`,
+    `npm publish ${path.join(dir, 'acme-a-1.5.0.tgz')} --registry https://registry.vetra.io --tag latest --userconfig NPMRC`,
   ]);
   assert.equal(fs.existsSync(npmrc), false);
+  assert.equal(fs.existsSync(path.join(dir, 'acme-a-1.5.0.tgz')), false);
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')), { name: '@acme/a', version: '0.0.0', dependencies: { x: 'workspace:*' } });
 });
 
 test('a version already in the registry (a re-run) is not published again but still reported', () => {
@@ -71,4 +79,23 @@ test('a version already in the registry (a re-run) is not published again but st
   const out = publishPackages({ dirs: [{ dir, name: '@acme/a' }], version: '1.5.0', registryUrl: PRODUCTION_REGISTRY, distTag: 'latest', token: 't' }, exec, () => {});
   assert.deepEqual(out, [{ name: '@acme/a', version: '1.5.0' }]);
   assert.deepEqual(calls, ['view']);
+});
+
+test('only E404 from npm view means not published; other errors are rethrown and cleaned up', () => {
+  const root = project({ a: { name: '@acme/a', version: '0.0.0' } });
+  const dir = path.join(root, 'a');
+  let npmrc = '';
+  const exec = (cmd, args) => {
+    npmrc = args[args.indexOf('--userconfig') + 1];
+    throw new Error('npm error code E503\nService Unavailable');
+  };
+  assert.throws(() => publishPackages({ dirs: [{ dir, name: '@acme/a' }], version: '1.5.0', registryUrl: DEV_REGISTRY, distTag: 'x', token: 't' }, exec, () => {}), /E503/);
+  assert.equal(fs.existsSync(npmrc), false);
+});
+
+test('distTagFor: a branch that is a semver range gets the branch- prefix', () => {
+  const t = (branch) => distTagFor({ kind: 'build', version: '1.0.0-x.1', branch, pr: null, production: false });
+  assert.equal(t('x'), 'branch-x');
+  assert.equal(t('v2'), 'branch-v2');
+  assert.equal(t('feature'), 'feature');
 });

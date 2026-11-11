@@ -3,7 +3,9 @@
 // pnpm pack resolves workspace:/catalog: ranges.
 
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
+import semver from 'semver';
 import { extractTarballName } from './publish.js';
 import { execCmd } from './util.js';
 import { parseVersion } from './version.js';
@@ -32,7 +34,7 @@ export function distTagFor({ kind, version, branch, pr, production }) {
   }
   if (pr != null) return `pr-${pr}`;
   const tag = String(branch ?? '').replace(/[^0-9A-Za-z-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'branch';
-  return RESERVED_TAGS.test(tag) || /^v?\d/.test(tag) ? `branch-${tag}` : tag;
+  return RESERVED_TAGS.test(tag) || /^v?\d/.test(tag) || semver.validRange(tag) !== null ? `branch-${tag}` : tag;
 }
 
 export function publishableDirs(dirs, warn) {
@@ -61,25 +63,32 @@ export function publishPackages({ dirs, version, registryUrl, distTag, token }, 
   const registry = registryUrl.replace(/\/+$/, '');
   const published = [];
   for (const { dir, name } of dirs) {
-    const npmrc = path.join(dir, '.npmrc.vetra-publish');
+    // The token file lives outside the package dir so that `pnpm pack` can never ship it.
+    const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'vetra-publish-'));
+    const npmrc = path.join(scratch, '.npmrc');
     fs.writeFileSync(npmrc, `//${registry.replace(/^https?:\/\//, '')}/:_authToken=${token}\nregistry=${registry}/\n`, { mode: 0o600 });
+    const pkgFile = path.join(dir, 'package.json');
+    const original = fs.readFileSync(pkgFile, 'utf8');
+    let tarball = null;
     try {
       let already = '';
       try {
         already = exec('npm', ['view', `${name}@${version}`, 'version', '--registry', registry, '--userconfig', npmrc], { cwd: dir }).trim();
-      } catch {
-        already = ''; // E404: the package does not exist yet
+      } catch (e) {
+        if (!/E404/.test(String(e?.message ?? e))) throw e; // auth, network, 5xx: not "unpublished"
       }
       if (already === version) {
         log(`Vetra: ${name}@${version} is already in ${registry}; not publishing it again.`);
       } else {
-        exec('npm', ['version', version, '--no-git-tag-version', '--allow-same-version'], { cwd: dir });
-        const tarball = extractTarballName(exec('pnpm', ['pack'], { cwd: dir }), dir);
+        fs.writeFileSync(pkgFile, `${JSON.stringify({ ...JSON.parse(original), version }, null, 2)}\n`);
+        tarball = extractTarballName(exec('pnpm', ['pack'], { cwd: dir }), dir);
         exec('npm', ['publish', tarball, '--registry', registry, '--tag', distTag, '--userconfig', npmrc], { cwd: dir });
       }
       published.push({ name, version });
     } finally {
-      fs.rmSync(npmrc, { force: true });
+      fs.writeFileSync(pkgFile, original);
+      if (tarball) fs.rmSync(tarball, { force: true });
+      fs.rmSync(scratch, { recursive: true, force: true });
     }
   }
   return published;
