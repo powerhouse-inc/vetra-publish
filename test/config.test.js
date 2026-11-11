@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { DEFAULT_MIGRATIONS, hostDockerfile, parseVetraConfig, readVetraConfig } from '../src/config.js';
+import { DEFAULT_MIGRATIONS, findHostDockerfile, hostDockerfile, parseVetraConfig, readVetraConfig } from '../src/config.js';
 
 const defaults = { host: 'cli', packageDirs: ['.'], prerelease: {}, requires: {}, migrations: DEFAULT_MIGRATIONS, migrates: false };
 
@@ -82,7 +82,9 @@ test('readVetraConfig: missing file is the defaults, bad JSON a clear error', ()
 test('hostDockerfile requires hosts/<host>/Dockerfile (spec 14.11)', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vp-host-'));
   assert.throws(() => hostDockerfile(dir, defaults), /hosts\/cli\/Dockerfile is missing.*ph generate hosts/s);
+  assert.equal(findHostDockerfile(dir, defaults), null);
   fs.mkdirSync(path.join(dir, 'hosts/cli'), { recursive: true });
   fs.writeFileSync(path.join(dir, 'hosts/cli/Dockerfile'), 'FROM node:24\n');
   assert.equal(hostDockerfile(dir, defaults), 'hosts/cli/Dockerfile');
+  assert.equal(findHostDockerfile(dir, defaults), 'hosts/cli/Dockerfile');
 });

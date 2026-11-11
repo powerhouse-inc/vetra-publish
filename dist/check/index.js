@@ -78687,12 +78687,19 @@ function readVetraConfig(dir) {
   return parseVetraConfig(json?.vetra);
 }
 
+/** The host's Dockerfile relative to `dir`, or null when the project has none. */
+function findHostDockerfile(dir, config) {
+  const rel = `hosts/${config.host}/Dockerfile`;
+  return external_node_fs_namespaceObject.existsSync(external_node_path_namespaceObject.join(dir, rel)) ? rel : null;
+}
+
 /** Publishing needs a host (spec 14.11): its Dockerfile, relative to `dir`. */
 function hostDockerfile(dir, config) {
-  const rel = `hosts/${config.host}/Dockerfile`;
-  if (!external_node_fs_namespaceObject.existsSync(external_node_path_namespaceObject.join(dir, rel))) {
+  const rel = findHostDockerfile(dir, config);
+  if (rel === null) {
+    const want = `hosts/${config.host}/Dockerfile`;
     throw new Error(
-      `Publishing needs a host: ${rel} is missing. Generate it with \`ph generate hosts\` ` +
+      `Publishing needs a host: ${want} is missing. Generate it with \`ph generate hosts\` ` +
         '(a Powerhouse version with uniform runners, FEATURE_UNIFORM_RUNNERS_ENABLED=1).',
     );
   }

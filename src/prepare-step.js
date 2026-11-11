@@ -5,7 +5,7 @@
 
 import fs from 'node:fs';
 import { workloadClaim } from './claim.js';
-import { hostDockerfile, readVetraConfig } from './config.js';
+import { findHostDockerfile, readVetraConfig } from './config.js';
 import { decideVersion } from './decide.js';
 import { baseImageOf } from './dockerfile.js';
 import { baseImageDigest, dockerLogin, ociLabels, powerhouseVersion, publishImage } from './image.js';
@@ -14,7 +14,7 @@ import { publishableDirs } from './packages.js';
 import { appsAudience } from './rest.js';
 import { runContext } from './run-context.js';
 import { renownTokens } from './tokens.js';
-import { mask, notice, setOutput, warning } from './util.js';
+import { appendSummary, mask, notice, setOutput, warning } from './util.js';
 import { registryToken } from './vetra-api.js';
 
 const REAL = {
@@ -22,7 +22,7 @@ const REAL = {
   runContext,
   cwd: () => process.cwd(),
   readVetraConfig,
-  hostDockerfile,
+  findHostDockerfile,
   readFile: (file) => fs.readFileSync(file, 'utf8'),
   renownTokens,
   workloadClaim,
@@ -37,6 +37,7 @@ const REAL = {
   publishableDirs,
   notice,
   warning,
+  appendSummary,
   setOutput,
 };
 
@@ -46,7 +47,17 @@ export async function prepareStep(overrides = {}) {
   const run = d.runContext();
   const dir = d.cwd();
   const config = d.readVetraConfig(dir);
-  const dockerfile = d.hostDockerfile(dir, config);
+  const dockerfile = d.findHostDockerfile(dir, config);
+  if (dockerfile === null) {
+    // Phase 1: a project without a host yet must not fail every push. Nothing
+    // is versioned, built, attested or reported; the composite skips the rest.
+    const rel = `hosts/${config.host}/Dockerfile`;
+    d.warning(`Vetra: ${rel} is missing, so there is no host image to publish: generate it with \`ph generate hosts\`. Nothing was published.`);
+    d.appendSummary(`**Vetra:** no host image: add ${rel} — see README\n\n`);
+    const outputs = { skipped: 'true', publish: 'false' };
+    for (const [k, v] of Object.entries(outputs)) d.setOutput(k, v);
+    return outputs;
+  }
 
   const appsToken = d.renownTokens(input.renownUrl, appsAudience(input.vetraUrl));
   const claim = d.workloadClaim(await appsToken());
@@ -83,6 +94,7 @@ export async function prepareStep(overrides = {}) {
     powerhouse,
     'base-image': baseImage,
     publish: String(publish),
+    skipped: 'false',
   };
   for (const [k, v] of Object.entries(outputs)) d.setOutput(k, v);
   return { ...outputs, registry: reg.registry };

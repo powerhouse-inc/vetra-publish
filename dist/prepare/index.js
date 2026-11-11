@@ -78688,12 +78688,19 @@ function readVetraConfig(dir) {
   return parseVetraConfig(json?.vetra);
 }
 
+/** The host's Dockerfile relative to `dir`, or null when the project has none. */
+function findHostDockerfile(dir, config) {
+  const rel = `hosts/${config.host}/Dockerfile`;
+  return external_node_fs_namespaceObject.existsSync(external_node_path_namespaceObject.join(dir, rel)) ? rel : null;
+}
+
 /** Publishing needs a host (spec 14.11): its Dockerfile, relative to `dir`. */
 function hostDockerfile(dir, config) {
-  const rel = `hosts/${config.host}/Dockerfile`;
-  if (!external_node_fs_namespaceObject.existsSync(external_node_path_namespaceObject.join(dir, rel))) {
+  const rel = findHostDockerfile(dir, config);
+  if (rel === null) {
+    const want = `hosts/${config.host}/Dockerfile`;
     throw new Error(
-      `Publishing needs a host: ${rel} is missing. Generate it with \`ph generate hosts\` ` +
+      `Publishing needs a host: ${want} is missing. Generate it with \`ph generate hosts\` ` +
         '(a Powerhouse version with uniform runners, FEATURE_UNIFORM_RUNNERS_ENABLED=1).',
     );
   }
@@ -79798,7 +79805,7 @@ const REAL = {
   runContext: runContext,
   cwd: () => process.cwd(),
   readVetraConfig: readVetraConfig,
-  hostDockerfile: hostDockerfile,
+  findHostDockerfile: findHostDockerfile,
   readFile: (file) => external_node_fs_namespaceObject.readFileSync(file, 'utf8'),
   renownTokens: renownTokens,
   workloadClaim: workloadClaim,
@@ -79813,6 +79820,7 @@ const REAL = {
   publishableDirs: publishableDirs,
   notice: notice,
   warning: warning,
+  appendSummary: appendSummary,
   setOutput: setOutput,
 };
 
@@ -79822,7 +79830,17 @@ async function prepareStep(overrides = {}) {
   const run = d.runContext();
   const dir = d.cwd();
   const config = d.readVetraConfig(dir);
-  const dockerfile = d.hostDockerfile(dir, config);
+  const dockerfile = d.findHostDockerfile(dir, config);
+  if (dockerfile === null) {
+    // Phase 1: a project without a host yet must not fail every push. Nothing
+    // is versioned, built, attested or reported; the composite skips the rest.
+    const rel = `hosts/${config.host}/Dockerfile`;
+    d.warning(`Vetra: ${rel} is missing, so there is no host image to publish: generate it with \`ph generate hosts\`. Nothing was published.`);
+    d.appendSummary(`**Vetra:** no host image: add ${rel} — see README\n\n`);
+    const outputs = { skipped: 'true', publish: 'false' };
+    for (const [k, v] of Object.entries(outputs)) d.setOutput(k, v);
+    return outputs;
+  }
 
   const appsToken = d.renownTokens(input.renownUrl, appsAudience(input.vetraUrl));
   const claim = d.workloadClaim(await appsToken());
@@ -79859,6 +79877,7 @@ async function prepareStep(overrides = {}) {
     powerhouse,
     'base-image': baseImage,
     publish: String(publish),
+    skipped: 'false',
   };
   for (const [k, v] of Object.entries(outputs)) d.setOutput(k, v);
   return { ...outputs, registry: reg.registry };

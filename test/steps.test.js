@@ -11,13 +11,13 @@ const pr = { event: 'pull_request', branch: null, pr: 12, target: 'main', sha: '
 const config = { host: 'switchboard', packageDirs: ['.'], requires: { powerhouse: '>=6' }, prerelease: {}, migrations: [], migrates: false };
 
 function prepareDeps({ run = push('main'), claim = { production: true, releaseBranch: true }, decided, dirs = [{ dir: '.', name: '@acme/shop' }], published } = {}) {
-  const seen = { outputs: {}, notices: [], masked: [], logins: [], images: [], audiences: [] };
+  const seen = { outputs: {}, notices: [], warnings: [], summary: [], masked: [], logins: [], images: [], audiences: [] };
   const deps = {
     actionInputs: () => input,
     runContext: () => run,
     cwd: () => '/work',
     readVetraConfig: () => config,
-    hostDockerfile: () => 'hosts/switchboard/Dockerfile',
+    findHostDockerfile: () => 'hosts/switchboard/Dockerfile',
     readFile: () => 'ARG PH_HOST\nFROM node:24\n',
     renownTokens: (url, audience) => (seen.audiences.push([url, audience]), async () => 'renown-apps'),
     workloadClaim: () => claim,
@@ -31,11 +31,26 @@ function prepareDeps({ run = push('main'), claim = { production: true, releaseBr
     baseImageDigest: (image) => ((seen.baseImage = image), BASE),
     publishableDirs: () => dirs,
     notice: (m) => seen.notices.push(m),
-    warning: () => {},
+    warning: (m) => seen.warnings.push(m),
+    appendSummary: (md) => seen.summary.push(md),
     setOutput: (k, v) => (seen.outputs[k] = v),
   };
   return { deps, seen };
 }
+
+test('prepare: without hosts/<host>/Dockerfile it warns and skips the rest: no version, no image, no report', async () => {
+  const { deps, seen } = prepareDeps();
+  deps.findHostDockerfile = () => null;
+  deps.decideVersion = async () => assert.fail('decideVersion must not run');
+  const r = await prepareStep(deps);
+  assert.deepEqual(seen.outputs, { skipped: 'true', publish: 'false' });
+  assert.deepEqual(r, { skipped: 'true', publish: 'false' });
+  assert.equal(seen.warnings.length, 1);
+  assert.match(seen.warnings[0], /hosts\/switchboard\/Dockerfile is missing/);
+  assert.match(seen.summary.join(''), /no host image: add hosts\/switchboard\/Dockerfile — see README/);
+  assert.deepEqual(seen.audiences, []);
+  assert.equal(seen.images.length, 0);
+});
 
 test('prepare: a release on the production branch publishes the image and hands every value to finish', async () => {
   const { deps, seen } = prepareDeps();
@@ -52,6 +67,7 @@ test('prepare: a release on the production branch publishes the image and hands 
     powerhouse: '6.0.0',
     'base-image': BASE,
     publish: 'true',
+    skipped: 'false',
     registry: 'cr.vetra.io',
   });
   assert.deepEqual(seen.audiences[0], ['https://r', 'https://v/api/@powerhousedao/vetra-cloud-package/apps']);

@@ -59,9 +59,12 @@ runs:
         INPUT_RENOWN_URL: ${{ inputs.renown-url }}
         INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
 
+    # Without hosts/<host>/Dockerfile prepare only warns and sets skipped:
+    # nothing below runs (phase 1 must not fail every push of such a project).
     # Signed with this run's identity: the caller's .github/workflows/vetra.yml.
     # Subject: cr.vetra.io/<repository> at the digest the registry serves.
     - name: Attest the host image
+      if: steps.prepare.outputs.skipped != 'true'
       uses: actions/attest-build-provenance@v2
       with:
         subject-name: ${{ steps.prepare.outputs.image-name }}
@@ -79,6 +82,7 @@ runs:
 
     - name: Packages and report
       id: finish
+      if: steps.prepare.outputs.skipped != 'true'
       shell: bash
       run: node "${{ github.action_path }}/dist/finish/index.js"
       env:
