@@ -1,0 +1,20 @@
+{
+  "name": "vetra-publish",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Composite GitHub Action that versions, builds, attests and reports builds and releases of a Vetra App.",
+  "type": "module",
+  "bin": { "vetra-publish": "dist/check/index.js" },
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "test": "node --test",
+    "build": "node scripts/build.js"
+  },
+  "dependencies": {
+    "release-please": "17.11.2"
+  },
+  "devDependencies": {
+    "@vercel/ncc": "0.45.0"
+  },
+  "license": "MIT"
+}
