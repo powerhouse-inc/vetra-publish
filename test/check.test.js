@@ -29,3 +29,24 @@ test('ok config without GitHub access reports next release unknown', () => {
 test('unknown command exits 2', () => {
   assert.equal(run(tmp(), 'nope').status, 2);
 });
+
+import { nextReleaseLine } from '../src/check.js';
+
+test('--branch without a value fails', () => {
+  const dir = tmp();
+  fs.mkdirSync(path.join(dir, 'hosts/cli'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'hosts/cli/Dockerfile'), 'FROM node\n');
+  const r = run(dir, 'check', '--branch');
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /--branch needs a branch name/);
+});
+
+test('no pending release PR: nothing to release, with the last release', async () => {
+  const m = { buildPullRequests: async () => [], releasedVersions: { '.': '1.0.9' } };
+  assert.equal(await nextReleaseLine(m, 'main'), 'ok   nothing to release from main (last release v1.0.9)');
+});
+
+test('a pending release PR: its version', async () => {
+  const m = { buildPullRequests: async () => [{ version: '1.1.0' }], releasedVersions: { '.': '1.0.9' } };
+  assert.match(await nextReleaseLine(m, 'main'), /^ok {3}next release from main: 1\.1\.0 /);
+});

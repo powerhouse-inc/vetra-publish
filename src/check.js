@@ -4,8 +4,9 @@
 //   npx -y github:powerhouse-inc/vetra-publish#v1 check [--branch <name>]
 // GITHUB_TOKEN, GH_TOKEN or a logged-in `gh` reads the release history.
 
+import { pathToFileURL } from 'node:url';
 import { hostDockerfile, readVetraConfig } from './config.js';
-import { manifestFor, openGitHub, proposedVersion } from './release-please.js';
+import { manifestFor, openGitHub, ROOT } from './release-please.js';
 import { parseRemote } from './run-context.js';
 import { execCmd } from './util.js';
 
@@ -16,6 +17,19 @@ const tryExec = (cmd, args) => {
     return '';
   }
 };
+
+/**
+ * The line `check` prints about the next release: what the branch's pending
+ * release PR proposes, or that there is nothing to release.
+ */
+export async function nextReleaseLine(manifest, branch) {
+  const [pr] = await manifest.buildPullRequests();
+  if (pr?.version) {
+    return `ok   next release from ${branch}: ${pr.version} (published only if ${branch} is the production branch or a release branch of the app in Vetra)`;
+  }
+  const last = manifest.releasedVersions[ROOT]?.toString();
+  return `ok   nothing to release from ${branch} (${last ? `last release v${last}` : 'no release yet'})`;
+}
 
 async function main(argv) {
   const [command, ...rest] = argv;
@@ -30,6 +44,7 @@ async function main(argv) {
   console.log(`ok   powerhouse.config.json: host ${config.host} (${dockerfile}), packages ${config.packageDirs.join(', ') || 'none'}`);
 
   const i = rest.indexOf('--branch');
+  if (i >= 0 && (!rest[i + 1] || rest[i + 1].startsWith('--'))) throw new Error('--branch needs a branch name');
   const branch = i >= 0 ? rest[i + 1] : tryExec('git', ['rev-parse', '--abbrev-ref', 'HEAD']);
   const repository = parseRemote(tryExec('git', ['remote', 'get-url', 'origin']));
   const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || tryExec('gh', ['auth', 'token']);
@@ -39,11 +54,12 @@ async function main(argv) {
   }
   const prereleaseId = config.prerelease[branch] ?? null;
   const github = await openGitHub({ repository, token, branch });
-  const version = await proposedVersion(await manifestFor(github, branch, prereleaseId), prereleaseId);
-  console.log(`ok   next release from ${branch}: ${version} (published only if ${branch} is the production branch or a release branch of the app in Vetra)`);
+  console.log(await nextReleaseLine(await manifestFor(github, branch, prereleaseId), branch));
 }
 
-main(process.argv.slice(2)).catch((err) => {
-  console.error(`fail ${err?.message ?? err}`);
-  process.exitCode = 1;
-});
+if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+  main(process.argv.slice(2)).catch((err) => {
+    console.error(`fail ${err?.message ?? err}`);
+    process.exitCode = 1;
+  });
+}

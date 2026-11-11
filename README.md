@@ -68,6 +68,19 @@ jobs:
 
 Outputs: `kind` (`release` or `build`), `version`, `image` (`<ref>@<digest>`).
 
+## GitHub App permissions
+
+Release PRs and tags are made by the Vetra GitHub App, installed on the repository with:
+`contents: write`, `pull_requests: write`, `attestations: read`. When the App's permissions
+change, each installation must approve the new permissions before releases work again.
+
+## Release branches
+
+An App's production branch always publishes releases. Other branches publish releases only when
+listed in the App's settings in Vetra (App > Settings > Release branches): exact names (`next`,
+`1.x`) or `*` matching within one path segment (`release/*`). Only listed branches publish
+releases, and only they publish packages to `registry.vetra.io`; all other branches publish builds.
+
 ## `powerhouse.config.json`
 
 All optional, in the `vetra` section next to `ph vetra`'s own keys:
