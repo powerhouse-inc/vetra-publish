@@ -152,3 +152,9 @@ test('cutRelease on a merged release PR: tags v<version> at its merge commit, wi
     ['add', 7, ['autorelease: tagged']],
   ]);
 });
+
+test('maintenance branch 1.x: a breaking change after v1.4.0 proposes 1.5.0, not 2.0.0', async () => {
+  const opts = (message) => ({ branch: '1.x', releases: [{ tagName: 'v1.4.0', sha: 'r1' }], commits: [commit('c2', message), commit('r1', 'chore: release 1.4.0')] });
+  assert.equal(await propose(opts('feat!: new cart'), null), '1.5.0');
+  assert.equal(await propose(opts('feat: coupons'), null), '1.5.0');
+});

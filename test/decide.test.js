@@ -23,6 +23,7 @@ function fakes(manifests, extra = {}) {
     },
     githubToken: async () => ((seen.vetraTokens += 1), { token: 'ghs_release', expiresAt: 'x' }),
     releaseAtCommit: async () => null,
+    markNotLatest: async () => {},
     warn: () => {},
     ...extra,
   };
@@ -100,4 +101,48 @@ test('a build without the run token is a clear error', async () => {
     decideVersion({ run: push('feat/x'), claim: { releaseBranch: false }, config, appsToken, input: { ...input, githubToken: '' } }, deps),
     /github-token/,
   );
+});
+
+test('a maintenance branch N.x refuses a proposal or release outside major N', async () => {
+  const onOneX = (manifests) => decideVersion({ run: push('1.x'), claim: releaseBranch, config, appsToken, input }, fakes(manifests).deps);
+  await assert.rejects(onOneX([fakeManifest(), fakeManifest({ proposal: '2.0.0' })]), /2\.0\.0.*maintenance branch 1\.x.*major 1/);
+  await assert.rejects(
+    onOneX([fakeManifest({ created: [{ id: 1, sha: 'c0ffee', version: '2.0.0', notes: '', tagName: 'v2.0.0' }] }), fakeManifest()]),
+    /2\.0\.0.*maintenance branch 1\.x.*major 1/,
+  );
+  const ok = await onOneX([fakeManifest(), fakeManifest({ proposal: '1.5.0' })]);
+  assert.equal(ok.version, '1.5.0-1-x.37');
+  const pr = { event: 'pull_request', branch: null, pr: 12, target: '1.x', sha: 'm3rge', repository: 'acme/shop', runNumber: '3' };
+  await assert.rejects(
+    decideVersion({ run: pr, claim: { releaseBranch: false }, config, appsToken, input }, fakes([fakeManifest({ proposal: '2.0.0' })]).deps),
+    /2\.0\.0.*maintenance branch 1\.x.*major 1/,
+  );
+});
+
+test('releases of maintenance and prerelease branches are not marked Latest on GitHub; main stays Latest', async () => {
+  const releaseOn = async (branch, version) => {
+    const marked = [];
+    const cut = fakeManifest({ created: [{ id: 7, sha: 'c0ffee', version, notes: '', tagName: `v${version}` }] });
+    const { deps } = fakes([cut, fakeManifest()], {
+      markNotLatest: async ({ repository, token, id }) => marked.push({ repository, token, id }),
+    });
+    await decideVersion({ run: push(branch), claim: releaseBranch, config, appsToken, input }, deps);
+    return marked;
+  };
+  assert.deepEqual(await releaseOn('main', '1.5.0'), []);
+  assert.deepEqual(await releaseOn('1.x', '1.5.0'), [{ repository: 'acme/shop', token: 'ghs_release', id: 7 }]);
+  assert.deepEqual(await releaseOn('next', '2.0.0-beta.0'), [{ repository: 'acme/shop', token: 'ghs_release', id: 7 }]);
+});
+
+test('a re-run looks the release up by the branch latest release tag, and marks it again off main', async () => {
+  const marked = [];
+  let asked;
+  const { deps } = fakes([fakeManifest({ latest: '2.0.0-beta.1' }), fakeManifest()], {
+    releaseAtCommit: async (q) => ((asked = q), { version: '2.0.0-beta.1', notes: 'n', id: 5 }),
+    markNotLatest: async ({ id }) => marked.push(id),
+  });
+  const r = await decideVersion({ run: push('next'), claim: releaseBranch, config, appsToken, input }, deps);
+  assert.deepEqual(r, { kind: 'release', version: '2.0.0-beta.1', notes: 'n' });
+  assert.deepEqual(asked, { repository: 'acme/shop', token: 'ghs_release', sha: 'c0ffee', version: '2.0.0-beta.1' });
+  assert.deepEqual(marked, [5]);
 });
