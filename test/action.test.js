@@ -35,6 +35,10 @@ test('finish gets every VETRA_* value stepState reads', () => {
 });
 
 test('action.yml always logs out of the registry prepare logged in to', () => {
-  assert.match(yml, /- name: Log out of the registry\n\s+if: always\(\) && steps\.prepare\.outputs\.registry != ''\n\s+shell: bash\n\s+run: docker logout "\$\{\{ steps\.prepare\.outputs\.registry \}\}"/);
+  // The registry reaches the shell as an env var, never interpolated into the script.
+  assert.match(yml, /- name: Log out of the registry\n\s+if: always\(\) && steps\.prepare\.outputs\.registry != ''\n\s+shell: bash\n\s+run: docker logout "\$REGISTRY" >\/dev\/null 2>&1 \|\| true\n\s+env:\n\s+REGISTRY: \$\{\{ steps\.prepare\.outputs\.registry \}\}/);
+  for (const run of yml.matchAll(/^\s+run: (.*)$/gm)) {
+    if (run[1].includes('steps.prepare.outputs')) assert.fail(`step output interpolated into a shell script: ${run[1]}`);
+  }
   assert.doesNotMatch(yml, /docker logout cr\.vetra\.io/);
 });

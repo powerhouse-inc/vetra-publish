@@ -102,4 +102,6 @@ runs:
     - name: Log out of the registry
       if: always() && steps.prepare.outputs.registry != ''
       shell: bash
-      run: docker logout "${{ steps.prepare.outputs.registry }}" >/dev/null 2>&1 || true
+      run: docker logout "$REGISTRY" >/dev/null 2>&1 || true
+      env:
+        REGISTRY: ${{ steps.prepare.outputs.registry }}
