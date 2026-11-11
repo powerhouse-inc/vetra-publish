@@ -28,7 +28,7 @@ export function parseVetraConfig(vetra) {
     packageDirs: ['.'],
     prerelease: {},
     requires: {},
-    migrations: DEFAULT_MIGRATIONS,
+    migrations: [...DEFAULT_MIGRATIONS],
     migrates: false,
   };
   if (vetra === undefined || vetra === null) return out;
@@ -41,7 +41,7 @@ export function parseVetraConfig(vetra) {
     else problems.push('vetra.host must be a lower-case host name such as "cli"');
   }
   if (v.packageDirs !== undefined) {
-    if (isStringList(v.packageDirs)) out.packageDirs = v.packageDirs;
+    if (isStringList(v.packageDirs)) out.packageDirs = [...v.packageDirs];
     else problems.push('vetra.packageDirs must be a list of directories ([] publishes no package)');
   }
   if (v.prerelease !== undefined) {
@@ -67,7 +67,7 @@ export function parseVetraConfig(vetra) {
         else problems.push('vetra.requires.powerhouse must be a version range such as ">=6.2.3"');
       }
       if (r.services !== undefined) {
-        if (isStringList(r.services)) out.requires.services = r.services;
+        if (isStringList(r.services)) out.requires.services = [...r.services];
         else problems.push('vetra.requires.services must be a list of service names');
       }
       if (r.size !== undefined) {
@@ -77,7 +77,7 @@ export function parseVetraConfig(vetra) {
     }
   }
   if (v.migrations !== undefined) {
-    if (isStringList(v.migrations)) out.migrations = v.migrations;
+    if (isStringList(v.migrations)) out.migrations = [...v.migrations];
     else problems.push('vetra.migrations must be a list of globs');
   }
   if (v.migrates !== undefined) {

@@ -36,11 +36,38 @@ test('lists every problem at once', () => {
     () => parseVetraConfig({ host: 'CLI', prerelease: { next: 'gamma' }, requires: { size: 'huge', cpu: 2 }, migrates: 'yes' }),
     (err) => {
       for (const s of ['vetra.host', 'vetra.prerelease.next', 'vetra.requires.size', 'vetra.requires.cpu', 'vetra.migrates']) {
-        assert.match(err.message, new RegExp(s.replace('.', '\\.')));
+        assert.match(err.message, new RegExp(s.replaceAll('.', '\\.')));
       }
       return true;
     },
   );
+});
+
+test('lists every invalid shape of the remaining keys', () => {
+  assert.throws(
+    () => parseVetraConfig({ packageDirs: 'x', prerelease: [], requires: { powerhouse: 5, services: 'DOCLING' }, migrations: [1] }),
+    (err) => {
+      for (const s of ['vetra.packageDirs', 'vetra.prerelease must', 'vetra.requires.powerhouse', 'vetra.requires.services', 'vetra.migrations']) {
+        assert.match(err.message, new RegExp(s.replaceAll('.', '\\.')));
+      }
+      return true;
+    },
+  );
+  assert.throws(() => parseVetraConfig('x'), /vetra must be an object/);
+  assert.throws(() => parseVetraConfig([]), /vetra must be an object/);
+  assert.throws(() => parseVetraConfig({ requires: 'x' }), /vetra\.requires must be an object/);
+});
+
+test('returned arrays are copies', () => {
+  const c = parseVetraConfig(undefined);
+  c.migrations.push('x');
+  c.packageDirs.push('x');
+  assert.deepEqual(parseVetraConfig(undefined).migrations, DEFAULT_MIGRATIONS);
+  assert.deepEqual(parseVetraConfig(undefined).packageDirs, ['.']);
+  const input = ['a'];
+  const d = parseVetraConfig({ migrations: input, packageDirs: input });
+  d.migrations.push('b');
+  assert.deepEqual(input, ['a']);
 });
 
 test('readVetraConfig: missing file is the defaults, bad JSON a clear error', () => {
