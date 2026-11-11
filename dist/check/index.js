@@ -78544,6 +78544,23 @@ module.exports = {};
 /******/ /* webpack/runtime/asset-relocator-loader */
 /******/ if (typeof __nccwpck_require__ !== 'undefined') __nccwpck_require__.ab = decodeURIComponent(new URL('.', import.meta.url).pathname).slice(import.meta.url.match(/^file:\/\/\/\w:/) ? 1 : 0, -1) + "/";
 /******/ 
+/******/ /* webpack/runtime/define property getters */
+/******/ (() => {
+/******/ 	// define getter functions for harmony exports
+/******/ 	__nccwpck_require__.d = (exports, definition) => {
+/******/ 		for(var key in definition) {
+/******/ 			if(__nccwpck_require__.o(definition, key) && !__nccwpck_require__.o(exports, key)) {
+/******/ 				Object.defineProperty(exports, key, { enumerable: true, get: definition[key] });
+/******/ 			}
+/******/ 		}
+/******/ 	};
+/******/ })();
+/******/ 
+/******/ /* webpack/runtime/hasOwnProperty shorthand */
+/******/ (() => {
+/******/ 	__nccwpck_require__.o = (obj, prop) => (Object.prototype.hasOwnProperty.call(obj, prop))
+/******/ })();
+/******/ 
 /******/ /* webpack/runtime/node module decorator */
 /******/ (() => {
 /******/ 	__nccwpck_require__.nmd = (module) => {
@@ -78556,6 +78573,13 @@ module.exports = {};
 /************************************************************************/
 var __webpack_exports__ = {};
 
+// EXPORTS
+__nccwpck_require__.d(__webpack_exports__, {
+  R: () => (/* binding */ nextReleaseLine)
+});
+
+;// CONCATENATED MODULE: external "node:url"
+const external_node_url_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("node:url");
 ;// CONCATENATED MODULE: external "node:fs"
 const external_node_fs_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("node:fs");
 ;// CONCATENATED MODULE: external "node:path"
@@ -78764,7 +78788,7 @@ function buildVersion(proposed, { branch, pr, runNumber }) {
  * step after its latest release (the next prerelease number, or the next
  * patch), or 0.1.0 for a project without releases.
  */
-function nextAfter(latest, prereleaseId) {
+function version_nextAfter(latest, prereleaseId) {
   const p = latest ? parseVersion(latest) : null;
   if (!p) return prereleaseId ? `0.1.0-${prereleaseId}.0` : '0.1.0';
   const core = `${p.major}.${p.minor}.${p.patch}`;
@@ -79022,6 +79046,7 @@ function appendSummary(markdown) {
 
 
 
+
 const tryExec = (cmd, args) => {
   try {
     return execCmd(cmd, args).trim();
@@ -79029,6 +79054,19 @@ const tryExec = (cmd, args) => {
     return '';
   }
 };
+
+/**
+ * The line `check` prints about the next release: what the branch's pending
+ * release PR proposes, or that there is nothing to release.
+ */
+async function nextReleaseLine(manifest, branch) {
+  const [pr] = await manifest.buildPullRequests();
+  if (pr?.version) {
+    return `ok   next release from ${branch}: ${pr.version} (published only if ${branch} is the production branch or a release branch of the app in Vetra)`;
+  }
+  const last = manifest.releasedVersions[ROOT]?.toString();
+  return `ok   nothing to release from ${branch} (${last ? `last release v${last}` : 'no release yet'})`;
+}
 
 async function main(argv) {
   const [command, ...rest] = argv;
@@ -79043,6 +79081,7 @@ async function main(argv) {
   console.log(`ok   powerhouse.config.json: host ${config.host} (${dockerfile}), packages ${config.packageDirs.join(', ') || 'none'}`);
 
   const i = rest.indexOf('--branch');
+  if (i >= 0 && (!rest[i + 1] || rest[i + 1].startsWith('--'))) throw new Error('--branch needs a branch name');
   const branch = i >= 0 ? rest[i + 1] : tryExec('git', ['rev-parse', '--abbrev-ref', 'HEAD']);
   const repository = parseRemote(tryExec('git', ['remote', 'get-url', 'origin']));
   const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || tryExec('gh', ['auth', 'token']);
@@ -79052,12 +79091,15 @@ async function main(argv) {
   }
   const prereleaseId = config.prerelease[branch] ?? null;
   const github = await openGitHub({ repository, token, branch });
-  const version = await proposedVersion(await manifestFor(github, branch, prereleaseId), prereleaseId);
-  console.log(`ok   next release from ${branch}: ${version} (published only if ${branch} is the production branch or a release branch of the app in Vetra)`);
+  console.log(await nextReleaseLine(await manifestFor(github, branch, prereleaseId), branch));
 }
 
-main(process.argv.slice(2)).catch((err) => {
-  console.error(`fail ${err?.message ?? err}`);
-  process.exitCode = 1;
-});
+if (import.meta.url === (0,external_node_url_namespaceObject.pathToFileURL)(process.argv[1] ?? '').href) {
+  main(process.argv.slice(2)).catch((err) => {
+    console.error(`fail ${err?.message ?? err}`);
+    process.exitCode = 1;
+  });
+}
 
+var __webpack_exports__nextReleaseLine = __webpack_exports__.R;
+export { __webpack_exports__nextReleaseLine as nextReleaseLine };
