@@ -17,8 +17,14 @@ import {
   releaseAtCommit as realReleaseAtCommit,
 } from './release-please.js';
 import { githubToken as realGithubToken } from './vetra-api.js';
-import { mask, warning } from './util.js';
+import { appendSummary, errorAnnotation, mask, warning } from './util.js';
 import { buildVersion, parseVersion, versionKind } from './version.js';
+
+/** An error annotation plus a job-summary line: something only a person can fix. */
+function realAlert(message) {
+  errorAnnotation(message);
+  appendSummary(`**Vetra:** ${message}\n\n`);
+}
 
 /** A maintenance branch N.x only ever releases N.y.z. */
 function inMajor(branch, version) {
@@ -39,6 +45,7 @@ export async function decideVersion({ run, claim, config, appsToken, input }, de
     releaseAtCommit = realReleaseAtCommit,
     markNotLatest = realMarkNotLatest,
     warn = warning,
+    alert = realAlert,
   } = deps;
   const prereleaseId = config.prerelease[run.target] ?? null;
 
@@ -56,15 +63,28 @@ export async function decideVersion({ run, claim, config, appsToken, input }, de
     const github = await openGitHub({ repository: run.repository, token, branch: run.branch });
     const notLatest = offMain ? (id) => markNotLatest({ repository: run.repository, token, id }) : undefined;
     const manifest = await manifestFor(github, run.branch, prereleaseId);
-    let released = await cutRelease(manifest, run.sha, { warn, notLatest });
+    const cut = await cutRelease(manifest, run.sha, { warn, alert, notLatest });
+    // Read after the release: its history includes what this run (or a run
+    // that raced it) just released.
+    const next = await manifestFor(github, run.branch, prereleaseId);
+    let released = cut.release;
     if (!released) {
-      const latest = manifest.releasedVersions[ROOT]?.toString() ?? null;
-      released = await releaseAtCommit({ repository: run.repository, token, sha: run.sha, version: latest });
+      // A re-run, or another run cut this commit's release first: the
+      // branch's latest release, if its tag points at this commit.
+      const latest = [next, manifest].map((m) => m.releasedVersions[ROOT]?.toString() ?? null);
+      for (const version of new Set(latest.filter(Boolean))) {
+        released = await releaseAtCommit({ repository: run.repository, token, sha: run.sha, version });
+        if (released) break;
+      }
       if (released && notLatest) await notLatest(released.id);
+      if (!released && cut.duplicate) {
+        alert(
+          `another run released v${latest[0]} while this one tried to, and its tag is not at this commit ${run.sha}: if this commit merged the release PR, re-run this workflow run so Vetra gets the release`,
+        );
+      }
     }
     // After a release this starts the next release PR; otherwise it brings
     // the open one up to date with this push.
-    const next = await manifestFor(github, run.branch, prereleaseId);
     await next.createPullRequests();
     if (released) {
       if (versionKind(released.version) !== 'release') {

@@ -51,29 +51,34 @@ export async function proposedVersion(manifest, prereleaseId) {
 
 /**
  * Tags and releases every merged release PR of the branch (GitHub release
- * with its notes); returns the one at `sha`, i.e. this run's commit.
+ * with its notes); `release` is the one at `sha`, i.e. this run's commit.
  * `notLatest(id)`, when given, is called for each GitHub release created
  * (releases off the production branch must not become GitHub's "Latest").
- * A release that already exists (a re-run) is a warning and null: the
- * caller then finds it with releaseAtCommit.
+ * A release tagged at another commit is reported only by that commit's run:
+ * `alert` (an error annotation and a summary line), since that run may be
+ * gone. A release that already exists (a re-run, or another run that raced
+ * this one) is a warning and `duplicate`: the caller then looks it up with
+ * releaseAtCommit.
  */
-export async function cutRelease(manifest, sha, { warn, notLatest }) {
+export async function cutRelease(manifest, sha, { warn, alert, notLatest }) {
   let created;
   try {
     created = (await manifest.createReleases()).filter(Boolean);
   } catch (e) {
     if (!(e instanceof Errors.DuplicateReleaseError)) throw e;
-    warn(`release ${e.tag ?? ''} already exists (${e.message}): looking it up by its tag`);
-    return null;
+    warn(`a release already exists (${e.message}): looking it up by its tag`);
+    return { release: null, duplicate: true };
   }
   for (const r of created) {
     if (notLatest) await notLatest(r.id);
     if (r.sha !== sha) {
-      warn(`release ${r.tagName} was tagged at ${r.sha}, not at this run's commit ${sha}: re-run the workflow run of ${String(r.sha).slice(0, 7)} to publish it`);
+      alert(
+        `release ${r.tagName} was tagged at ${r.sha}, not at this run's commit ${sha}: Vetra has it only if the workflow run of ${String(r.sha).slice(0, 7)} reported it; if not, re-run that run`,
+      );
     }
   }
   const mine = created.find((r) => r.sha === sha);
-  return mine ? { version: mine.version, notes: mine.notes ?? '' } : null;
+  return { release: mine ? { version: mine.version, notes: mine.notes ?? '' } : null, duplicate: false };
 }
 
 async function gh(fetchImpl, token, path, init = {}) {

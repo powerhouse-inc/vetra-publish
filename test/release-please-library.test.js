@@ -141,7 +141,7 @@ test('cutRelease on a merged release PR: tags v<version> at its merge commit, wi
   const { github, created, labels } = await repo({ pullRequests: [pr] });
   const manifest = await manifestFor(github, 'main', null);
   const warnings = [];
-  const got = await cutRelease(manifest, 'c0ffee', { warn: (m) => warnings.push(m) });
+  const { release: got } = await cutRelease(manifest, 'c0ffee', { warn: (m) => warnings.push(m), alert: (m) => warnings.push(m) });
   assert.equal(got.version, '1.5.0');
   assert.match(got.notes, /### Features\n\n\* cart/);
   assert.deepEqual(warnings, []);

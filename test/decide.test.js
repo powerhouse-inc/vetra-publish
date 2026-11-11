@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { Errors } from 'release-please';
 import { decideVersion } from '../src/decide.js';
 
 const v = (s) => ({ toString: () => s });
@@ -64,8 +65,8 @@ test('a prerelease branch proposes with its identifier', async () => {
 });
 
 test('a re-run after the release was cut reports the release again', async () => {
-  const { deps } = fakes([fakeManifest(), fakeManifest()], {
-    releaseAtCommit: async ({ sha, token }) => (sha === 'c0ffee' && token === 'ghs_release' ? { version: '1.5.0', notes: 'n' } : null),
+  const { deps } = fakes([fakeManifest({ latest: '1.5.0' }), fakeManifest({ latest: '1.5.0' })], {
+    releaseAtCommit: async ({ sha, token, version }) => (sha === 'c0ffee' && token === 'ghs_release' && version === '1.5.0' ? { version: '1.5.0', notes: 'n' } : null),
   });
   const r = await decideVersion({ run: push('main'), claim: production, config, appsToken, input }, deps);
   assert.deepEqual(r, { kind: 'release', version: '1.5.0', notes: 'n' });
@@ -158,4 +159,34 @@ test('a release branch that is neither production, a prerelease branch nor N.x i
   );
   assert.equal(seen.vetraTokens, 0);
   assert.deepEqual(seen.manifests, []);
+});
+
+test('a release another run cut while this one raced it is found with the fresh release history', async () => {
+  const asked = [];
+  const raced = fakeManifest({ latest: '1.4.0' });
+  raced.createReleases = async () => {
+    throw new Errors.DuplicateReleaseError({ status: 422 }, 'tagName');
+  };
+  const alerts = [];
+  const { deps } = fakes([raced, fakeManifest({ latest: '1.5.0' })], {
+    releaseAtCommit: async (q) => (asked.push(q.version), q.version === '1.5.0' ? { version: '1.5.0', notes: 'n', id: 3 } : null),
+    alert: (m) => alerts.push(m),
+  });
+  const r = await decideVersion({ run: push('main'), claim: production, config, appsToken, input }, deps);
+  assert.deepEqual(r, { kind: 'release', version: '1.5.0', notes: 'n' });
+  assert.equal(asked[0], '1.5.0');
+  assert.deepEqual(alerts, []);
+});
+
+test('a raced release whose tag is not at this commit is an error annotation and a summary line, and the run builds', async () => {
+  const raced = fakeManifest({ latest: '1.4.0' });
+  raced.createReleases = async () => {
+    throw new Errors.DuplicateReleaseError({ status: 422 }, 'tagName');
+  };
+  const alerts = [];
+  const { deps } = fakes([raced, fakeManifest({ latest: '1.5.0', proposal: '1.5.1' })], { alert: (m) => alerts.push(m) });
+  const r = await decideVersion({ run: push('main'), claim: production, config, appsToken, input }, deps);
+  assert.equal(r.kind, 'build');
+  assert.equal(alerts.length, 1);
+  assert.match(alerts[0], /another run.*v1\.5\.0.*re-run/);
 });

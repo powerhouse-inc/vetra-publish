@@ -35,10 +35,14 @@ test('cutRelease returns the release tagged at this commit and warns about other
       { sha: 'c0ffee', version: '1.5.0', notes: '## Features', tagName: 'v1.5.0' },
     ],
   };
-  assert.deepEqual(await cutRelease(manifest, 'c0ffee', { warn: (m) => warnings.push(m) }), { version: '1.5.0', notes: '## Features' });
+  assert.deepEqual(await cutRelease(manifest, 'c0ffee', { warn: () => {}, alert: (m) => warnings.push(m) }), {
+    release: { version: '1.5.0', notes: '## Features' },
+    duplicate: false,
+  });
+  // The run of 'old' may be gone: an error annotation and a summary line, not a warning.
   assert.equal(warnings.length, 1);
   assert.match(warnings[0], /v1\.4\.1.*re-run/);
-  assert.equal(await cutRelease({ createReleases: async () => [] }, 'c0ffee', { warn: () => {} }), null);
+  assert.deepEqual(await cutRelease({ createReleases: async () => [] }, 'c0ffee', { warn: () => {}, alert: () => {} }), { release: null, duplicate: false });
 });
 
 test('maintenance branches N.x ship patches only, so they stay in their major', () => {
@@ -58,7 +62,7 @@ test('cutRelease: a release that already exists is a warning and no release, for
       throw new Errors.DuplicateReleaseError({ status: 422 }, 'tagName');
     },
   };
-  assert.equal(await cutRelease(manifest, 'c0ffee', { warn: (m) => warnings.push(m) }), null);
+  assert.deepEqual(await cutRelease(manifest, 'c0ffee', { warn: (m) => warnings.push(m), alert: () => {} }), { release: null, duplicate: true });
   assert.equal(warnings.length, 1);
   assert.match(warnings[0], /already/);
   await assert.rejects(
@@ -75,7 +79,7 @@ test('cutRelease: notLatest is called for every release it creates', async () =>
       { id: 2, sha: 'c0ffee', version: '1.5.0', notes: 'n', tagName: 'v1.5.0' },
     ],
   };
-  await cutRelease(manifest, 'c0ffee', { warn: () => {}, notLatest: async (id) => marked.push(id) });
+  await cutRelease(manifest, 'c0ffee', { warn: () => {}, alert: () => {}, notLatest: async (id) => marked.push(id) });
   assert.deepEqual(marked, [1, 2]);
 });
 

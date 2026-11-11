@@ -40,6 +40,11 @@ export function warning(message) {
   process.stdout.write(`::warning::${message}\n`);
 }
 
+/** An error annotation that does not fail the step. */
+export function errorAnnotation(message) {
+  process.stdout.write(`::error::${message}\n`);
+}
+
 /** Marks the step as failed without throwing (mirrors @actions/core.setFailed). */
 export function setFailed(message) {
   process.stdout.write(`::error::${message}\n`);
