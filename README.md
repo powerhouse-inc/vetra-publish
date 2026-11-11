@@ -33,7 +33,8 @@ on:
     types: [opened, synchronize, reopened]
 permissions: {}
 concurrency:
-  group: vetra-${{ github.event.pull_request.number || github.ref }}
+  # Per commit for pushes: a newer push never cancels a run that is cutting a release.
+  group: vetra-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   publish:
@@ -54,6 +55,27 @@ jobs:
         with:
           app-id: <APP_ID>
 ```
+
+### Node
+
+The action's scripts run on the runner's `node`, which must be Node 20 or newer. The composite
+installs no Node itself: the generated workflow sets up Node 24 with your package manager; a
+repository without a `package.json` gets no setup step and runs on the runner image's Node
+(`ubuntu-latest` ships Node 20 or newer). Add `actions/setup-node` yourself if you change that.
+
+### Until phase 2
+
+The generated workflow also keeps a `deploy` job with `powerhouse-inc/vetra-deploy-action` (the
+production environment and PR previews). Until phase 2 removes it, both that job and this action
+move the `main` and `pr-<n>` dist-tags of your packages, so those tags point at whichever of the
+two published last.
+
+## Host
+
+Publishing needs `hosts/<host>/Dockerfile` (`vetra.host`, default `cli`); generate it with
+`ph generate hosts`. Without it the action writes a warning and a job summary line ("no host
+image"), and publishes nothing: no version, no image, no attestation, no packages, no report. The
+run still succeeds, so a project can add the workflow before its host.
 
 ## Inputs
 
@@ -117,3 +139,9 @@ Check it before pushing: `npx -y github:powerhouse-inc/vetra-publish#v1 check`.
   as GitHub's "Latest" release.
 - The workflow's `actions/checkout` needs `fetch-depth: 0`: the migrations check refuses a shallow clone.
 - A failed release run can be re-run: the tag and image already exist and are reused.
+- Only the run of the commit that merged the release PR reports the release. When another run cut
+  that release first, or the release cannot be matched to its commit, the run shows an error
+  annotation and a job summary line saying which run to re-run.
+- A release branch must be the production branch, a prerelease branch (`vetra.prerelease`) or a
+  maintenance branch `N.x`; any other release branch is refused (it would take the production
+  branch's versions and become GitHub's "Latest").
