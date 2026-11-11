@@ -33,13 +33,14 @@ const input = { appId: 'app-1', vetraUrl: 'https://v', githubToken: 'ghs_run' };
 const config = { prerelease: { next: 'beta' } };
 const appsToken = async () => 'renown';
 const push = (branch) => ({ event: 'push', branch, pr: null, target: branch, sha: 'c0ffee', repository: 'acme/shop', runNumber: '37' });
-const releaseBranch = { releaseBranch: true };
+const releaseBranch = { releaseBranch: true, production: false };
+const production = { releaseBranch: true, production: true };
 
 test('a merged release PR on a release branch is the release; the next release PR is opened', async () => {
   const cut = fakeManifest({ created: [{ sha: 'c0ffee', version: '1.5.0', notes: '## Features', tagName: 'v1.5.0' }] });
   const next = fakeManifest();
   const { deps, seen } = fakes([cut, next]);
-  const r = await decideVersion({ run: push('main'), claim: releaseBranch, config, appsToken, input }, deps);
+  const r = await decideVersion({ run: push('main'), claim: production, config, appsToken, input }, deps);
   assert.deepEqual(r, { kind: 'release', version: '1.5.0', notes: '## Features' });
   assert.deepEqual(cut.calls, ['createReleases']);
   assert.deepEqual(next.calls, ['createPullRequests']);
@@ -50,7 +51,7 @@ test('a merged release PR on a release branch is the release; the next release P
 test('any other push to a release branch builds the proposed version and updates the release PR', async () => {
   const next = fakeManifest({ proposal: '1.5.0' });
   const { deps } = fakes([fakeManifest(), next]);
-  const r = await decideVersion({ run: push('main'), claim: releaseBranch, config, appsToken, input }, deps);
+  const r = await decideVersion({ run: push('main'), claim: production, config, appsToken, input }, deps);
   assert.deepEqual(r, { kind: 'build', version: '1.5.0-main.37', notes: null });
   assert.deepEqual(next.calls, ['createPullRequests', 'buildPullRequests']);
 });
@@ -66,7 +67,7 @@ test('a re-run after the release was cut reports the release again', async () =>
   const { deps } = fakes([fakeManifest(), fakeManifest()], {
     releaseAtCommit: async ({ sha, token }) => (sha === 'c0ffee' && token === 'ghs_release' ? { version: '1.5.0', notes: 'n' } : null),
   });
-  const r = await decideVersion({ run: push('main'), claim: releaseBranch, config, appsToken, input }, deps);
+  const r = await decideVersion({ run: push('main'), claim: production, config, appsToken, input }, deps);
   assert.deepEqual(r, { kind: 'release', version: '1.5.0', notes: 'n' });
 });
 
@@ -126,10 +127,12 @@ test('releases of maintenance and prerelease branches are not marked Latest on G
     const { deps } = fakes([cut, fakeManifest()], {
       markNotLatest: async ({ repository, token, id }) => marked.push({ repository, token, id }),
     });
-    await decideVersion({ run: push(branch), claim: releaseBranch, config, appsToken, input }, deps);
+    await decideVersion({ run: push(branch), claim: branch === 'main' || branch === 'release' ? production : releaseBranch, config, appsToken, input }, deps);
     return marked;
   };
   assert.deepEqual(await releaseOn('main', '1.5.0'), []);
+  // The production branch is whatever Renown says, not a branch name.
+  assert.deepEqual(await releaseOn('release', '1.5.0'), []);
   assert.deepEqual(await releaseOn('1.x', '1.5.0'), [{ repository: 'acme/shop', token: 'ghs_release', id: 7 }]);
   assert.deepEqual(await releaseOn('next', '2.0.0-beta.0'), [{ repository: 'acme/shop', token: 'ghs_release', id: 7 }]);
 });
@@ -145,4 +148,14 @@ test('a re-run looks the release up by the branch latest release tag, and marks 
   assert.deepEqual(r, { kind: 'release', version: '2.0.0-beta.1', notes: 'n' });
   assert.deepEqual(asked, { repository: 'acme/shop', token: 'ghs_release', sha: 'c0ffee', version: '2.0.0-beta.1' });
   assert.deepEqual(marked, [5]);
+});
+
+test('a release branch that is neither production, a prerelease branch nor N.x is refused before anything is cut', async () => {
+  const { deps, seen } = fakes([fakeManifest({ created: [{ id: 1, sha: 'c0ffee', version: '1.5.0', notes: '', tagName: 'v1.5.0' }] }), fakeManifest()]);
+  await assert.rejects(
+    decideVersion({ run: push('staging'), claim: releaseBranch, config, appsToken, input }, deps),
+    /release branch staging is not the production branch.*prerelease.*N\.x/,
+  );
+  assert.equal(seen.vetraTokens, 0);
+  assert.deepEqual(seen.manifests, []);
 });

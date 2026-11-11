@@ -43,11 +43,17 @@ export async function decideVersion({ run, claim, config, appsToken, input }, de
   const prereleaseId = config.prerelease[run.target] ?? null;
 
   if (run.event === 'push' && claim.releaseBranch) {
+    // Only the production branch's releases become GitHub's "Latest".
+    const offMain = !claim.production;
+    if (offMain && prereleaseId === null && maintenanceMajor(run.branch) === null) {
+      // Its releases would take main's versions and become GitHub's "Latest".
+      throw new Error(
+        `release branch ${run.branch} is not the production branch, a prerelease branch (vetra.prerelease in powerhouse.config.json) or a maintenance branch N.x: Vetra releases nothing from it`,
+      );
+    }
     const { token } = await githubToken(input.vetraUrl, await appsToken(), input.appId);
     mask(token);
     const github = await openGitHub({ repository: run.repository, token, branch: run.branch });
-    // Only the production branch's releases become GitHub's "Latest".
-    const offMain = prereleaseId !== null || maintenanceMajor(run.branch) !== null;
     const notLatest = offMain ? (id) => markNotLatest({ repository: run.repository, token, id }) : undefined;
     const manifest = await manifestFor(github, run.branch, prereleaseId);
     let released = await cutRelease(manifest, run.sha, { warn, notLatest });
