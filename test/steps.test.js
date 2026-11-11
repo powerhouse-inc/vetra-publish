@@ -52,6 +52,7 @@ test('prepare: a release on the production branch publishes the image and hands 
     powerhouse: '6.0.0',
     'base-image': BASE,
     publish: 'true',
+    registry: 'cr.vetra.io',
   });
   assert.deepEqual(seen.audiences[0], ['https://r', 'https://v/api/@powerhousedao/vetra-cloud-package/apps']);
   assert.deepEqual(seen.reg, ['https://v', 'renown-apps', 'app-1']);
@@ -87,13 +88,13 @@ test('prepare: a pull request build is never on a release branch; no packages me
   assert.equal(seen.outputs.publish, 'false');
 });
 
-test('prepare: nothing is written when the image fails', async () => {
+test('prepare: only the registry (for the logout) is written when the image fails', async () => {
   const { deps, seen } = prepareDeps();
   deps.publishImage = () => {
     throw new Error('push failed');
   };
   await assert.rejects(prepareStep(deps), /push failed/);
-  assert.deepEqual(seen.outputs, {});
+  assert.deepEqual(seen.outputs, { registry: 'cr.vetra.io' });
 });
 
 const state = (over = {}) => ({

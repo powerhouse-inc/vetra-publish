@@ -95,7 +95,7 @@ runs:
         VETRA_POWERHOUSE: ${{ steps.prepare.outputs.powerhouse }}
         VETRA_BASE_IMAGE: ${{ steps.prepare.outputs.base-image }}
 
-    - name: Log out of cr.vetra.io
-      if: always()
+    - name: Log out of the registry
+      if: always() && steps.prepare.outputs.registry != ''
       shell: bash
-      run: docker logout cr.vetra.io >/dev/null 2>&1 || true
+      run: docker logout "${{ steps.prepare.outputs.registry }}" >/dev/null 2>&1 || true

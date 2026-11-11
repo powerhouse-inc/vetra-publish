@@ -57,6 +57,8 @@ export async function prepareStep(overrides = {}) {
   const reg = await d.registryToken(input.vetraUrl, await appsToken(), input.appId);
   d.mask(reg.password);
   d.dockerLogin(reg);
+  // Written at once: the composite's logout step needs it even when a later step fails.
+  d.setOutput('registry', reg.registry);
   const image = d.publishImage({
     registry: reg.registry,
     repository: reg.repository,
@@ -83,5 +85,5 @@ export async function prepareStep(overrides = {}) {
     publish: String(publish),
   };
   for (const [k, v] of Object.entries(outputs)) d.setOutput(k, v);
-  return outputs;
+  return { ...outputs, registry: reg.registry };
 }

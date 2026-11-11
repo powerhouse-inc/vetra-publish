@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import { stepState } from '../src/inputs.js';
 
 const yml = fs.readFileSync(new URL('../action.yml', import.meta.url), 'utf8');
-const PREPARE_OUTPUTS = ['kind', 'version', 'notes', 'release-branch', 'production', 'image-name', 'image-ref', 'image-digest', 'powerhouse', 'base-image', 'publish'];
+const PREPARE_OUTPUTS = ['kind', 'version', 'notes', 'release-branch', 'production', 'image-name', 'image-ref', 'image-digest', 'powerhouse', 'base-image', 'publish', 'registry'];
 
 test('action.yml runs the bundled entry points', () => {
   assert.match(yml, /node "\$\{\{ github\.action_path \}\}\/dist\/prepare\/index\.js"/);
@@ -24,4 +24,9 @@ test('finish gets every VETRA_* value stepState reads', () => {
   const env = Object.fromEntries([...yml.matchAll(/^\s+(VETRA_[A-Z_]+): \$\{\{ steps\.prepare\.outputs\.([a-z-]+) \}\}$/gm)].map((m) => [m[1], 'x']));
   assert.doesNotThrow(() => stepState(env));
   assert.equal(Object.keys(env).length, 9);
+});
+
+test('action.yml always logs out of the registry prepare logged in to', () => {
+  assert.match(yml, /- name: Log out of the registry\n\s+if: always\(\) && steps\.prepare\.outputs\.registry != ''\n\s+shell: bash\n\s+run: docker logout "\$\{\{ steps\.prepare\.outputs\.registry \}\}"/);
+  assert.doesNotMatch(yml, /docker logout cr\.vetra\.io/);
 });
