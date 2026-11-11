@@ -10,7 +10,7 @@ import { decideVersion } from './decide.js';
 import { baseImageOf } from './dockerfile.js';
 import { baseImageDigest, dockerLogin, ociLabels, powerhouseVersion, publishImage } from './image.js';
 import { actionInputs } from './inputs.js';
-import { publishableDirs } from './packages.js';
+import { publishableDirs, registryFor } from './packages.js';
 import { appsAudience } from './rest.js';
 import { runContext } from './run-context.js';
 import { renownTokens } from './tokens.js';
@@ -62,6 +62,12 @@ export async function prepareStep(overrides = {}) {
   const appsToken = d.renownTokens(input.renownUrl, appsAudience(input.vetraUrl));
   const claim = d.workloadClaim(await appsToken());
   const releaseBranch = run.event === 'push' && claim.releaseBranch === true;
+  const publish = d.publishableDirs(config.packageDirs, d.warning).length > 0;
+  if (publish) {
+    // Fail before a tag or GitHub release is cut if Renown refuses the npm
+    // registry audience. The token is not handed on: finish mints its own.
+    await d.renownTokens(input.renownUrl, registryFor({ releaseBranch, event: run.event }))();
+  }
   const { kind, version, notes } = await d.decideVersion({ run, claim, config, appsToken, input });
   d.notice(`Vetra: ${kind} ${version}`);
 
@@ -80,7 +86,6 @@ export async function prepareStep(overrides = {}) {
   });
   const powerhouse = d.powerhouseVersion(image.ref);
   const baseImage = d.baseImageDigest(d.baseImageOf(d.readFile(dockerfile), { PH_HOST: config.host }));
-  const publish = d.publishableDirs(config.packageDirs, d.warning).length > 0;
 
   const outputs = {
     kind,

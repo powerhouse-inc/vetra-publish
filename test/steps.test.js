@@ -52,6 +52,35 @@ test('prepare: without hosts/<host>/Dockerfile it warns and skips the rest: no v
   assert.equal(seen.images.length, 0);
 });
 
+test('prepare: with packages to publish, the registry token is minted before anything is versioned', async () => {
+  const order = [];
+  const { deps, seen } = prepareDeps();
+  deps.renownTokens = (url, audience) => (seen.audiences.push([url, audience]), async () => (order.push(audience), 'renown-token'));
+  const decide = deps.decideVersion;
+  deps.decideVersion = async (args) => (order.push('decide'), decide(args));
+  await prepareStep(deps);
+  const registry = order.indexOf('https://registry.vetra.io');
+  assert.ok(registry >= 0 && registry < order.indexOf('decide'), order.join(' > '));
+  // Never handed on: finish mints its own.
+  assert.ok(!Object.values(seen.outputs).includes('renown-token'));
+});
+
+test('prepare: a Renown refusal of the registry audience fails before a release is cut', async () => {
+  const { deps } = prepareDeps({ run: pr, claim: { production: false, releaseBranch: false } });
+  deps.renownTokens = (url, audience) => async () => {
+    if (audience === 'https://registry.dev.vetra.io') throw new Error('Renown refused audience');
+    return 'renown-apps';
+  };
+  deps.decideVersion = async () => assert.fail('decideVersion must not run');
+  await assert.rejects(prepareStep(deps), /Renown refused audience/);
+});
+
+test('prepare: no packages, no registry token', async () => {
+  const { deps, seen } = prepareDeps({ dirs: [] });
+  await prepareStep(deps);
+  assert.ok(!seen.audiences.some(([, a]) => a.includes('registry')));
+});
+
 test('prepare: a release on the production branch publishes the image and hands every value to finish', async () => {
   const { deps, seen } = prepareDeps();
   await prepareStep(deps);
