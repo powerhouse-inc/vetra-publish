@@ -4,6 +4,7 @@
 //   npx -y github:powerhouse-inc/vetra-publish#v1 check [--branch <name>]
 // GITHUB_TOKEN, GH_TOKEN or a logged-in `gh` reads the release history.
 
+import { realpathSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { hostDockerfile, readVetraConfig } from './config.js';
 import { manifestFor, openGitHub, ROOT } from './release-please.js';
@@ -57,7 +58,17 @@ async function main(argv) {
   console.log(await nextReleaseLine(await manifestFor(github, branch, prereleaseId), branch));
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+/** Whether this module is the script node runs, also through npm's bin symlink. */
+function isEntry() {
+  if (!process.argv[1]) return false;
+  try {
+    return import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
+  } catch {
+    return false;
+  }
+}
+
+if (isEntry()) {
   main(process.argv.slice(2)).catch((err) => {
     console.error(`fail ${err?.message ?? err}`);
     process.exitCode = 1;

@@ -50,3 +50,16 @@ test('a pending release PR: its version', async () => {
   const m = { buildPullRequests: async () => [{ version: '1.1.0' }], releasedVersions: { '.': '1.0.9' } };
   assert.match(await nextReleaseLine(m, 'main'), /^ok {3}next release from main: 1\.1\.0 /);
 });
+
+// npm runs the bin through a symlink (node_modules/.bin/vetra-publish): the
+// bundled CLI must still recognise itself as the entry point.
+test('the built CLI runs through a symlink, as npm installs the bin', () => {
+  const dir = tmp();
+  const link = path.join(dir, 'vetra-publish');
+  fs.symlinkSync(path.resolve('dist/check/index.js'), link);
+  const r = spawnSync(process.execPath, [link, 'nope'], { cwd: dir, encoding: 'utf8' });
+  assert.equal(r.status, 2, r.stdout + r.stderr);
+  assert.match(r.stderr, /usage: vetra-publish check/);
+  const direct = spawnSync(link, ['nope'], { cwd: dir, encoding: 'utf8' });
+  assert.equal(direct.status, 2);
+});

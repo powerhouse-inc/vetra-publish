@@ -78578,10 +78578,10 @@ __nccwpck_require__.d(__webpack_exports__, {
   R: () => (/* binding */ nextReleaseLine)
 });
 
-;// CONCATENATED MODULE: external "node:url"
-const external_node_url_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("node:url");
 ;// CONCATENATED MODULE: external "node:fs"
 const external_node_fs_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("node:fs");
+;// CONCATENATED MODULE: external "node:url"
+const external_node_url_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("node:url");
 ;// CONCATENATED MODULE: external "node:path"
 const external_node_path_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("node:path");
 ;// CONCATENATED MODULE: ./src/config.js
@@ -79064,6 +79064,7 @@ function appendSummary(markdown) {
 
 
 
+
 const tryExec = (cmd, args) => {
   try {
     return execCmd(cmd, args).trim();
@@ -79111,7 +79112,17 @@ async function main(argv) {
   console.log(await nextReleaseLine(await manifestFor(github, branch, prereleaseId), branch));
 }
 
-if (import.meta.url === (0,external_node_url_namespaceObject.pathToFileURL)(process.argv[1] ?? '').href) {
+/** Whether this module is the script node runs, also through npm's bin symlink. */
+function isEntry() {
+  if (!process.argv[1]) return false;
+  try {
+    return import.meta.url === (0,external_node_url_namespaceObject.pathToFileURL)((0,external_node_fs_namespaceObject.realpathSync)(process.argv[1])).href;
+  } catch {
+    return false;
+  }
+}
+
+if (isEntry()) {
   main(process.argv.slice(2)).catch((err) => {
     console.error(`fail ${err?.message ?? err}`);
     process.exitCode = 1;
