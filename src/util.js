@@ -3,6 +3,7 @@
 // decision logic lives in ref.js / version.js / rest.js / image.js.
 
 import { spawnSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 
 /**
@@ -45,16 +46,24 @@ export function setFailed(message) {
   process.exitCode = 1;
 }
 
-/** Writes a `name=value` output, using the multiline-safe GITHUB_OUTPUT format. */
-export function setOutput(name, value) {
+/**
+ * Writes a `name=value` output in the multiline GITHUB_OUTPUT format. The
+ * delimiter is random per call (values such as release notes come from
+ * contributors' commit and PR titles): a value containing it is refused, so it
+ * can never end the value early and forge another output.
+ */
+export function setOutput(name, value, { uuid = randomUUID } = {}) {
   const file = process.env.GITHUB_OUTPUT;
-  const delimiter = '__VETRA_DEPLOY_ACTION_EOF__';
-  const line = `${name}<<${delimiter}\n${value ?? ''}\n${delimiter}\n`;
+  const text = String(value ?? '');
   if (file) {
-    fs.appendFileSync(file, line);
+    const delimiter = `ghadelimiter_${uuid()}`;
+    if (name.includes(delimiter) || text.includes(delimiter)) {
+      throw new Error(`output '${name}' contains its delimiter ${delimiter}: not writing it`);
+    }
+    fs.appendFileSync(file, `${name}<<${delimiter}\n${text}\n${delimiter}\n`);
   } else {
     // Fallback for local/manual runs without a GITHUB_OUTPUT file.
-    process.stdout.write(`[output] ${name}=${value ?? ''}\n`);
+    process.stdout.write(`[output] ${name}=${text}\n`);
   }
 }
 
