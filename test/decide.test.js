@@ -110,8 +110,8 @@ test('a maintenance branch N.x refuses a proposal or release outside major N', a
     onOneX([fakeManifest({ created: [{ id: 1, sha: 'c0ffee', version: '2.0.0', notes: '', tagName: 'v2.0.0' }] }), fakeManifest()]),
     /2\.0\.0.*maintenance branch 1\.x.*major 1/,
   );
-  const ok = await onOneX([fakeManifest(), fakeManifest({ proposal: '1.5.0' })]);
-  assert.equal(ok.version, '1.5.0-1-x.37');
+  const ok = await onOneX([fakeManifest(), fakeManifest({ proposal: '1.4.3' })]);
+  assert.equal(ok.version, '1.4.3-1-x.37');
   const pr = { event: 'pull_request', branch: null, pr: 12, target: '1.x', sha: 'm3rge', repository: 'acme/shop', runNumber: '3' };
   await assert.rejects(
     decideVersion({ run: pr, claim: { releaseBranch: false }, config, appsToken, input }, fakes([fakeManifest({ proposal: '2.0.0' })]).deps),

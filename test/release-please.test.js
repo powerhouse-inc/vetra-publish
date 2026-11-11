@@ -41,12 +41,12 @@ test('cutRelease returns the release tagged at this commit and warns about other
   assert.equal(await cutRelease({ createReleases: async () => [] }, 'c0ffee', { warn: () => {} }), null);
 });
 
-test('maintenance branches N.x bump minor at most, so they stay in their major', () => {
+test('maintenance branches N.x ship patches only, so they stay in their major', () => {
   assert.equal(maintenanceMajor('1.x'), 1);
   assert.equal(maintenanceMajor('12.x'), 12);
   assert.equal(maintenanceMajor('main'), null);
   assert.equal(maintenanceMajor('1.x-fix'), null);
-  assert.deepEqual(releaserConfig(null, '1.x'), { ...releaserConfig(null), versioning: 'always-bump-minor' });
+  assert.deepEqual(releaserConfig(null, '1.x'), { ...releaserConfig(null), versioning: 'always-bump-patch' });
   assert.deepEqual(releaserConfig(null, 'main'), releaserConfig(null));
   assert.deepEqual(releaserConfig('beta', 'next'), releaserConfig('beta'));
 });

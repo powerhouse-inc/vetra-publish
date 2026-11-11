@@ -6,8 +6,8 @@
 // 2.0.0-beta.3 + any change into 2.0.0 (the default strategy would propose
 // 2.1.0-beta.3); with prereleaseType "<id>.0" a prerelease branch proposes
 // 2.0.0-beta.0, then beta.1… ("beta" alone would give 2.0.0-beta, a build).
-// A maintenance branch N.x uses "always-bump-minor" instead, so it stays in
-// major N: a breaking change proposes the next minor (and so does a fix).
+// A maintenance branch N.x uses "always-bump-patch" instead: it ships
+// patches for an old major, so fix, feat and feat! all propose the next patch.
 
 import { Errors, GitHub, Manifest } from 'release-please';
 import { nextAfter } from './version.js';
@@ -25,7 +25,7 @@ export function maintenanceMajor(branch) {
 export function releaserConfig(prereleaseId, branch = null) {
   return {
     releaseType: 'node',
-    versioning: maintenanceMajor(branch) === null ? 'prerelease' : 'always-bump-minor',
+    versioning: maintenanceMajor(branch) === null ? 'prerelease' : 'always-bump-patch',
     includeComponentInTag: false,
     includeVInTag: true,
     changelogPath: 'CHANGELOG.md',
