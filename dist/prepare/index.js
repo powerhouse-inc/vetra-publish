@@ -79349,7 +79349,10 @@ function dockerLogin({ registry, username, password }, exec = util_execCmd) {
   exec('docker', ['login', registry, '-u', username, '--password-stdin'], { input: password });
 }
 
-const NOT_FOUND = /not found|manifest unknown|MANIFEST_UNKNOWN|404/i;
+// What registries answer for a tag that does not exist. buildx/containerd
+// reports it as `ERROR: <ref>: not found`; any other "404" (a token endpoint,
+// a proxy) is an error, not an absent tag.
+const NOT_FOUND = /manifest unknown|MANIFEST_UNKNOWN|not found: manifest|404 Not Found|^ERROR: \S+: not found$/im;
 
 /**
  * The digest the registry serves for `ref`, or null when the tag does not

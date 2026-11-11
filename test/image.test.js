@@ -65,6 +65,28 @@ for (const msg of ['received unexpected HTTP status: 503 Service Unavailable', '
   });
 }
 
+for (const msg of [
+  'ERROR: cr.vetra.io/acme/shop:1.5.0: not found',
+  'ERROR: failed to resolve: manifest unknown',
+  'MANIFEST_UNKNOWN: manifest unknown; unknown tag=1.5.0',
+  'httpReadSeeker: failed open: content at https://cr.vetra.io/v2/acme/shop/manifests/1.5.0 not found: manifest',
+  'unexpected status: 404 Not Found',
+]) {
+  test(`registry "${msg.slice(0, 24)}…" means the tag is absent: it is built`, () => {
+    let inspects = 0;
+    const { exec, calls } = fakeExec([['docker buildx imagetools inspect', () => (++inspects === 1 ? new Error(`failed\n${msg}`) : JSON.stringify({ digest: D }))]]);
+    assert.equal(publishImage(target, exec).digest, D);
+    assert.ok(calls.some((c) => c.line.startsWith('docker build ')));
+  });
+}
+
+test('a "404" elsewhere in an error (here the token endpoint) is not "tag absent"', () => {
+  const msg = 'failed to authorize: failed to fetch oauth token: unexpected status from GET request to https://cr.vetra.io/service/token: 404 page not found';
+  const { exec, calls } = fakeExec([['docker buildx imagetools inspect', new Error(`failed\n${msg}`)]]);
+  assert.throws(() => publishImage(target, exec), /oauth token/);
+  assert.ok(!calls.some((c) => c.line.startsWith('docker build ')));
+});
+
 test('an existing tag (a re-run) is reused: tags are never moved', () => {
   const { exec, calls } = fakeExec([
     ['docker buildx imagetools inspect', JSON.stringify({ mediaType: 'application/vnd.oci.image.manifest.v1+json', digest: D, size: 1 })],
