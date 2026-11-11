@@ -186,7 +186,7 @@ test('finish: a release publishes packages to the production registry as latest 
   assert.deepEqual(seen.migratesArgs, { version: '1.5.0', config });
   const { body, token, url } = seen.report;
   assert.equal(url, 'https://v');
-  assert.equal(token, 'token-for:https://v/api/@powerhousedao/vetra-cloud-package/apps');
+  assert.equal(token, 'token-for:https://aud/apps');
   assert.deepEqual(body, {
     appId: 'app-1',
     version: '1.5.0',

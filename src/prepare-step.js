@@ -11,7 +11,6 @@ import { baseImageOf } from './dockerfile.js';
 import { baseImageDigest, dockerLogin, ociLabels, powerhouseVersion, publishImage } from './image.js';
 import { actionInputs } from './inputs.js';
 import { publishableDirs, registryFor } from './packages.js';
-import { appsAudience } from './rest.js';
 import { runContext } from './run-context.js';
 import { renownTokens } from './tokens.js';
 import { appendSummary, mask, notice, setOutput, warning } from './util.js';
@@ -59,7 +58,7 @@ export async function prepareStep(overrides = {}) {
     return outputs;
   }
 
-  const appsToken = d.renownTokens(input.renownUrl, appsAudience(input.vetraUrl));
+  const appsToken = d.renownTokens(input.renownUrl, input.vetraAudience);
   const claim = d.workloadClaim(await appsToken());
   const releaseBranch = run.event === 'push' && claim.releaseBranch === true;
   const publish = d.publishableDirs(config.packageDirs, d.warning).length > 0;
