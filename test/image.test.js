@@ -52,7 +52,7 @@ test('an existing tag (a re-run) is reused: tags are never moved', () => {
     ['docker buildx imagetools inspect', JSON.stringify({ mediaType: 'application/vnd.oci.image.manifest.v1+json', digest: D, size: 1 })],
   ]);
   assert.equal(publishImage(target, exec).digest, D);
-  assert.ok(!calls.some((c) => c.line.startsWith('docker build') || c.line.startsWith('docker push')));
+  assert.ok(!calls.some((c) => c.line.startsWith('docker build ') || c.line.startsWith('docker push ')));
 });
 
 test('powerhouseVersion reads ph-cli from the image', () => {
