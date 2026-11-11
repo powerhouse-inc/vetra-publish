@@ -1,0 +1,192 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { Errors } from 'release-please';
+import { decideVersion } from '../src/decide.js';
+
+const v = (s) => ({ toString: () => s });
+function fakeManifest({ created = [], proposal = null, latest = null } = {}) {
+  const calls = [];
+  return {
+    calls,
+    releasedVersions: latest ? { '.': v(latest) } : {},
+    createReleases: async () => (calls.push('createReleases'), created),
+    createPullRequests: async () => (calls.push('createPullRequests'), []),
+    buildPullRequests: async () => (calls.push('buildPullRequests'), proposal ? [{ version: v(proposal) }] : []),
+  };
+}
+function fakes(manifests, extra = {}) {
+  const seen = { vetraTokens: 0, manifests: [] };
+  const deps = {
+    openGitHub: async ({ token, branch }) => ({ token, branch }),
+    manifestFor: async (github, branch, prereleaseId) => {
+      seen.manifests.push({ token: github.token, branch, prereleaseId });
+      return manifests.shift();
+    },
+    githubToken: async () => ((seen.vetraTokens += 1), { token: 'ghs_release', expiresAt: 'x' }),
+    releaseAtCommit: async () => null,
+    markNotLatest: async () => {},
+    warn: () => {},
+    ...extra,
+  };
+  return { deps, seen };
+}
+const input = { appId: 'app-1', vetraUrl: 'https://v', githubToken: 'ghs_run' };
+const config = { prerelease: { next: 'beta' } };
+const appsToken = async () => 'renown';
+const push = (branch) => ({ event: 'push', branch, pr: null, target: branch, sha: 'c0ffee', repository: 'acme/shop', runNumber: '37' });
+const releaseBranch = { releaseBranch: true, production: false };
+const production = { releaseBranch: true, production: true };
+
+test('a merged release PR on a release branch is the release; the next release PR is opened', async () => {
+  const cut = fakeManifest({ created: [{ sha: 'c0ffee', version: '1.5.0', notes: '## Features', tagName: 'v1.5.0' }] });
+  const next = fakeManifest();
+  const { deps, seen } = fakes([cut, next]);
+  const r = await decideVersion({ run: push('main'), claim: production, config, appsToken, input }, deps);
+  assert.deepEqual(r, { kind: 'release', version: '1.5.0', notes: '## Features' });
+  assert.deepEqual(cut.calls, ['createReleases']);
+  assert.deepEqual(next.calls, ['createPullRequests']);
+  assert.equal(seen.vetraTokens, 1);
+  assert.deepEqual(seen.manifests[0], { token: 'ghs_release', branch: 'main', prereleaseId: null });
+});
+
+test('any other push to a release branch builds the proposed version and updates the release PR', async () => {
+  const next = fakeManifest({ proposal: '1.5.0' });
+  const { deps } = fakes([fakeManifest(), next]);
+  const r = await decideVersion({ run: push('main'), claim: production, config, appsToken, input }, deps);
+  assert.deepEqual(r, { kind: 'build', version: '1.5.0-main.37', notes: null });
+  assert.deepEqual(next.calls, ['createPullRequests', 'buildPullRequests']);
+});
+
+test('a prerelease branch proposes with its identifier', async () => {
+  const { deps, seen } = fakes([fakeManifest(), fakeManifest({ proposal: '2.0.0-beta.2' })]);
+  const r = await decideVersion({ run: push('next'), claim: releaseBranch, config, appsToken, input }, deps);
+  assert.equal(r.version, '2.0.0-beta.2-next.37');
+  assert.equal(seen.manifests[0].prereleaseId, 'beta');
+});
+
+test('a re-run after the release was cut reports the release again', async () => {
+  const { deps } = fakes([fakeManifest({ latest: '1.5.0' }), fakeManifest({ latest: '1.5.0' })], {
+    releaseAtCommit: async ({ sha, token, version }) => (sha === 'c0ffee' && token === 'ghs_release' && version === '1.5.0' ? { version: '1.5.0', notes: 'n' } : null),
+  });
+  const r = await decideVersion({ run: push('main'), claim: production, config, appsToken, input }, deps);
+  assert.deepEqual(r, { kind: 'release', version: '1.5.0', notes: 'n' });
+});
+
+test('a released version Vetra would read as a build is refused', async () => {
+  const cut = fakeManifest({ created: [{ sha: 'c0ffee', version: '2.0.0-beta', notes: '', tagName: 'v2.0.0-beta' }] });
+  const { deps } = fakes([cut, fakeManifest()]);
+  await assert.rejects(
+    decideVersion({ run: push('next'), claim: releaseBranch, config, appsToken, input }, deps),
+    /alpha\.N, beta\.N or rc\.N/,
+  );
+});
+
+test('pull requests build from the target branch with the run token; Vetra is not asked for a GitHub token', async () => {
+  const { deps, seen } = fakes([fakeManifest({ proposal: '2.0.0-beta.2' })]);
+  const run = { event: 'pull_request', branch: null, pr: 12, target: 'next', sha: 'm3rge', repository: 'acme/shop', runNumber: '3' };
+  const r = await decideVersion({ run, claim: { releaseBranch: false }, config, appsToken, input }, deps);
+  assert.deepEqual(r, { kind: 'build', version: '2.0.0-beta.2-pr.12.3', notes: null });
+  assert.equal(seen.vetraTokens, 0);
+  assert.deepEqual(seen.manifests, [{ token: 'ghs_run', branch: 'next', prereleaseId: 'beta' }]);
+});
+
+test('a push to another branch builds from its own history', async () => {
+  const { deps, seen } = fakes([fakeManifest({ latest: '1.4.0' })]);
+  const r = await decideVersion({ run: push('feat/login'), claim: { releaseBranch: false }, config, appsToken, input }, deps);
+  assert.equal(r.version, '1.4.1-feat-login.37');
+  assert.equal(seen.vetraTokens, 0);
+});
+
+test('a build without the run token is a clear error', async () => {
+  const { deps } = fakes([]);
+  await assert.rejects(
+    decideVersion({ run: push('feat/x'), claim: { releaseBranch: false }, config, appsToken, input: { ...input, githubToken: '' } }, deps),
+    /github-token/,
+  );
+});
+
+test('a maintenance branch N.x refuses a proposal or release outside major N', async () => {
+  const onOneX = (manifests) => decideVersion({ run: push('1.x'), claim: releaseBranch, config, appsToken, input }, fakes(manifests).deps);
+  await assert.rejects(onOneX([fakeManifest(), fakeManifest({ proposal: '2.0.0' })]), /2\.0\.0.*maintenance branch 1\.x.*major 1/);
+  await assert.rejects(
+    onOneX([fakeManifest({ created: [{ id: 1, sha: 'c0ffee', version: '2.0.0', notes: '', tagName: 'v2.0.0' }] }), fakeManifest()]),
+    /2\.0\.0.*maintenance branch 1\.x.*major 1/,
+  );
+  const ok = await onOneX([fakeManifest(), fakeManifest({ proposal: '1.4.3' })]);
+  assert.equal(ok.version, '1.4.3-1-x.37');
+  const pr = { event: 'pull_request', branch: null, pr: 12, target: '1.x', sha: 'm3rge', repository: 'acme/shop', runNumber: '3' };
+  await assert.rejects(
+    decideVersion({ run: pr, claim: { releaseBranch: false }, config, appsToken, input }, fakes([fakeManifest({ proposal: '2.0.0' })]).deps),
+    /2\.0\.0.*maintenance branch 1\.x.*major 1/,
+  );
+});
+
+test('releases of maintenance and prerelease branches are not marked Latest on GitHub; main stays Latest', async () => {
+  const releaseOn = async (branch, version) => {
+    const marked = [];
+    const cut = fakeManifest({ created: [{ id: 7, sha: 'c0ffee', version, notes: '', tagName: `v${version}` }] });
+    const { deps } = fakes([cut, fakeManifest()], {
+      markNotLatest: async ({ repository, token, id }) => marked.push({ repository, token, id }),
+    });
+    await decideVersion({ run: push(branch), claim: branch === 'main' || branch === 'release' ? production : releaseBranch, config, appsToken, input }, deps);
+    return marked;
+  };
+  assert.deepEqual(await releaseOn('main', '1.5.0'), []);
+  // The production branch is whatever Renown says, not a branch name.
+  assert.deepEqual(await releaseOn('release', '1.5.0'), []);
+  assert.deepEqual(await releaseOn('1.x', '1.5.0'), [{ repository: 'acme/shop', token: 'ghs_release', id: 7 }]);
+  assert.deepEqual(await releaseOn('next', '2.0.0-beta.0'), [{ repository: 'acme/shop', token: 'ghs_release', id: 7 }]);
+});
+
+test('a re-run looks the release up by the branch latest release tag, and marks it again off main', async () => {
+  const marked = [];
+  let asked;
+  const { deps } = fakes([fakeManifest({ latest: '2.0.0-beta.1' }), fakeManifest()], {
+    releaseAtCommit: async (q) => ((asked = q), { version: '2.0.0-beta.1', notes: 'n', id: 5 }),
+    markNotLatest: async ({ id }) => marked.push(id),
+  });
+  const r = await decideVersion({ run: push('next'), claim: releaseBranch, config, appsToken, input }, deps);
+  assert.deepEqual(r, { kind: 'release', version: '2.0.0-beta.1', notes: 'n' });
+  assert.deepEqual(asked, { repository: 'acme/shop', token: 'ghs_release', sha: 'c0ffee', version: '2.0.0-beta.1' });
+  assert.deepEqual(marked, [5]);
+});
+
+test('a release branch that is neither production, a prerelease branch nor N.x is refused before anything is cut', async () => {
+  const { deps, seen } = fakes([fakeManifest({ created: [{ id: 1, sha: 'c0ffee', version: '1.5.0', notes: '', tagName: 'v1.5.0' }] }), fakeManifest()]);
+  await assert.rejects(
+    decideVersion({ run: push('staging'), claim: releaseBranch, config, appsToken, input }, deps),
+    /release branch staging is not the production branch.*prerelease.*N\.x/,
+  );
+  assert.equal(seen.vetraTokens, 0);
+  assert.deepEqual(seen.manifests, []);
+});
+
+test('a release another run cut while this one raced it is found with the fresh release history', async () => {
+  const asked = [];
+  const raced = fakeManifest({ latest: '1.4.0' });
+  raced.createReleases = async () => {
+    throw new Errors.DuplicateReleaseError({ status: 422 }, 'tagName');
+  };
+  const alerts = [];
+  const { deps } = fakes([raced, fakeManifest({ latest: '1.5.0' })], {
+    releaseAtCommit: async (q) => (asked.push(q.version), q.version === '1.5.0' ? { version: '1.5.0', notes: 'n', id: 3 } : null),
+    alert: (m) => alerts.push(m),
+  });
+  const r = await decideVersion({ run: push('main'), claim: production, config, appsToken, input }, deps);
+  assert.deepEqual(r, { kind: 'release', version: '1.5.0', notes: 'n' });
+  assert.equal(asked[0], '1.5.0');
+  assert.deepEqual(alerts, []);
+});
+
+test('a raced release whose tag is not at this commit is an error annotation and a summary line, and the run builds', async () => {
+  const raced = fakeManifest({ latest: '1.4.0' });
+  raced.createReleases = async () => {
+    throw new Errors.DuplicateReleaseError({ status: 422 }, 'tagName');
+  };
+  const alerts = [];
+  const { deps } = fakes([raced, fakeManifest({ latest: '1.5.0', proposal: '1.5.1' })], { alert: (m) => alerts.push(m) });
+  const r = await decideVersion({ run: push('main'), claim: production, config, appsToken, input }, deps);
+  assert.equal(r.kind, 'build');
+  assert.equal(alerts.length, 1);
+  assert.match(alerts[0], /another run.*v1\.5\.0.*re-run/);
+});
