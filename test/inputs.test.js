@@ -8,8 +8,15 @@ test('actionInputs: app-id required, URLs default', () => {
     appId: 'app-1',
     vetraUrl: 'https://switchboard.vetra.io',
     renownUrl: 'https://switchboard.renown.vetra.io',
+    vetraAudience: 'https://switchboard.vetra.io/api/@powerhousedao/vetra-cloud-package/apps',
     githubToken: 'ghs',
   });
+});
+
+test('actionInputs: vetra-audience overrides the default and is independent of vetra-url', () => {
+  const i = actionInputs({ INPUT_APP_ID: 'a', INPUT_VETRA_URL: 'https://switchboard.staging.vetra.io', INPUT_VETRA_AUDIENCE: 'https://aud' });
+  assert.equal(i.vetraUrl, 'https://switchboard.staging.vetra.io');
+  assert.equal(i.vetraAudience, 'https://aud');
 });
 
 test('stepState reads what prepare handed over', () => {
