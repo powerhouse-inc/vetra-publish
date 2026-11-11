@@ -18,6 +18,10 @@ inputs:
     description: 'Vetra switchboard URL (CI API at <vetra-url>/api/@powerhousedao/vetra-cloud-package/apps/ci).'
     required: false
     default: 'https://switchboard.vetra.io'
+  vetra-audience:
+    description: 'Renown audience of the Vetra tokens. Vetra verifies one fixed audience, so staging keeps the default.'
+    required: false
+    default: 'https://switchboard.vetra.io/api/@powerhousedao/vetra-cloud-package/apps'
   renown-url:
     description: 'Renown switchboard URL, for the OIDC-to-bearer token exchange.'
     required: false
@@ -56,6 +60,7 @@ runs:
       env:
         INPUT_APP_ID: ${{ inputs.app-id }}
         INPUT_VETRA_URL: ${{ inputs.vetra-url }}
+        INPUT_VETRA_AUDIENCE: ${{ inputs.vetra-audience }}
         INPUT_RENOWN_URL: ${{ inputs.renown-url }}
         INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
 
@@ -88,6 +93,7 @@ runs:
       env:
         INPUT_APP_ID: ${{ inputs.app-id }}
         INPUT_VETRA_URL: ${{ inputs.vetra-url }}
+        INPUT_VETRA_AUDIENCE: ${{ inputs.vetra-audience }}
         INPUT_RENOWN_URL: ${{ inputs.renown-url }}
         VETRA_KIND: ${{ steps.prepare.outputs.kind }}
         VETRA_VERSION: ${{ steps.prepare.outputs.version }}

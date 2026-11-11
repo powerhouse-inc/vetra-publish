@@ -1,12 +1,16 @@
 // The action's inputs, and the state the prepare step hands to the finish
 // step (action.yml passes prepare's outputs as VETRA_* variables).
 
+// Vetra verifies one fixed audience whatever vetra-url (staging included) is.
+export const VETRA_AUDIENCE = 'https://switchboard.vetra.io/api/@powerhousedao/vetra-cloud-package/apps';
+
 export function actionInputs(env = process.env) {
   const appId = env.INPUT_APP_ID;
   if (!appId) throw new Error("input 'app-id' is required");
   return {
     appId,
     vetraUrl: env.INPUT_VETRA_URL || 'https://switchboard.vetra.io',
+    vetraAudience: env.INPUT_VETRA_AUDIENCE || VETRA_AUDIENCE,
     renownUrl: env.INPUT_RENOWN_URL || 'https://switchboard.renown.vetra.io',
     githubToken: env.INPUT_GITHUB_TOKEN || '',
   };

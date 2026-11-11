@@ -7,7 +7,6 @@ import { actionInputs, stepState } from './inputs.js';
 import { computeMigrates } from './migrates.js';
 import { distTagFor, publishPackages, publishableDirs, registryFor } from './packages.js';
 import { releaseBody, summaryMarkdown } from './report.js';
-import { appsAudience } from './rest.js';
 import { runContext } from './run-context.js';
 import { renownTokens } from './tokens.js';
 import { appendSummary, setOutput, warning } from './util.js';
@@ -60,7 +59,7 @@ export async function finishStep(overrides = {}) {
     migrates: s.kind === 'release' ? d.computeMigrates({ version: s.version, config }) : false,
     built: { powerhouse: s.powerhouse, baseImage: s.baseImage },
   });
-  const recorded = await d.reportRelease(input.vetraUrl, d.renownTokens(input.renownUrl, appsAudience(input.vetraUrl)), body);
+  const recorded = await d.reportRelease(input.vetraUrl, d.renownTokens(input.renownUrl, input.vetraAudience), body);
   d.appendSummary(summaryMarkdown(recorded));
   const outputs = { kind: s.kind, version: s.version, image: `${s.imageRef}@${s.imageDigest}` };
   for (const [k, v] of Object.entries(outputs)) d.setOutput(k, v);

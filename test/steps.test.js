@@ -5,7 +5,7 @@ import { finishStep } from '../src/finish-step.js';
 
 const DIGEST = `sha256:${'a'.repeat(64)}`;
 const BASE = `node:24@sha256:${'b'.repeat(64)}`;
-const input = { appId: 'app-1', vetraUrl: 'https://v', renownUrl: 'https://r', githubToken: 'ghs_run' };
+const input = { appId: 'app-1', vetraUrl: 'https://v', renownUrl: 'https://r', vetraAudience: 'https://aud/apps', githubToken: 'ghs_run' };
 const push = (branch) => ({ event: 'push', branch, pr: null, target: branch, sha: 'c0ffee', repository: 'acme/shop', runNumber: '37' });
 const pr = { event: 'pull_request', branch: null, pr: 12, target: 'main', sha: 'c0ffee', repository: 'acme/shop', runNumber: '37' };
 const config = { host: 'switchboard', packageDirs: ['.'], requires: { powerhouse: '>=6' }, prerelease: {}, migrations: [], migrates: false };
@@ -99,7 +99,7 @@ test('prepare: a release on the production branch publishes the image and hands 
     skipped: 'false',
     registry: 'cr.vetra.io',
   });
-  assert.deepEqual(seen.audiences[0], ['https://r', 'https://v/api/@powerhousedao/vetra-cloud-package/apps']);
+  assert.deepEqual(seen.audiences[0], ['https://r', 'https://aud/apps']);
   assert.deepEqual(seen.reg, ['https://v', 'renown-apps', 'app-1']);
   assert.ok(seen.masked.includes('pw'));
   assert.equal(seen.logins.length, 1);
@@ -186,7 +186,7 @@ test('finish: a release publishes packages to the production registry as latest 
   assert.deepEqual(seen.migratesArgs, { version: '1.5.0', config });
   const { body, token, url } = seen.report;
   assert.equal(url, 'https://v');
-  assert.equal(token, 'token-for:https://v/api/@powerhousedao/vetra-cloud-package/apps');
+  assert.equal(token, 'token-for:https://aud/apps');
   assert.deepEqual(body, {
     appId: 'app-1',
     version: '1.5.0',
@@ -234,4 +234,11 @@ test('finish: a failed report writes no outputs', async () => {
   await assert.rejects(finishStep(deps), /VERSION_CONFLICT/);
   assert.deepEqual(seen.outputs, {});
   assert.equal(seen.summary.length, 0);
+});
+
+test('finish: the report token is minted for vetra-audience, not one derived from vetra-url', async () => {
+  const { deps, seen } = finishDeps({ run: pr, s: state({ kind: 'build' }) });
+  await finishStep(deps);
+  assert.ok(seen.audiences.includes('https://aud/apps'), seen.audiences.join());
+  assert.ok(!seen.audiences.some((a) => a.startsWith('https://v/')));
 });

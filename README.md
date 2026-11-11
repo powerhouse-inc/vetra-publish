@@ -83,6 +83,7 @@ run still succeeds, so a project can add the workflow before its host.
 |---|---|---|
 | `app-id` | required | The Vetra App id. |
 | `vetra-url` | `https://switchboard.vetra.io` | |
+| `vetra-audience` | `https://switchboard.vetra.io/api/@powerhousedao/vetra-cloud-package/apps` | Renown audience of the Vetra tokens; staging apps keep the default. |
 | `renown-url` | `https://switchboard.renown.vetra.io` | |
 | `install-command` | `pnpm install --frozen-lockfile` | Runs only when there is a package to publish. |
 | `build-command` | `pnpm build` | Runs only when there is a package to publish. |

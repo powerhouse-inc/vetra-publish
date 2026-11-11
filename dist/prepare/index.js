@@ -79429,12 +79429,16 @@ function ociLabels({ version, commit, repository, host }) {
 // The action's inputs, and the state the prepare step hands to the finish
 // step (action.yml passes prepare's outputs as VETRA_* variables).
 
+// Vetra verifies one fixed audience whatever vetra-url (staging included) is.
+const VETRA_AUDIENCE = 'https://switchboard.vetra.io/api/@powerhousedao/vetra-cloud-package/apps';
+
 function actionInputs(env = process.env) {
   const appId = env.INPUT_APP_ID;
   if (!appId) throw new Error("input 'app-id' is required");
   return {
     appId,
     vetraUrl: env.INPUT_VETRA_URL || 'https://switchboard.vetra.io',
+    vetraAudience: env.INPUT_VETRA_AUDIENCE || VETRA_AUDIENCE,
     renownUrl: env.INPUT_RENOWN_URL || 'https://switchboard.renown.vetra.io',
     githubToken: env.INPUT_GITHUB_TOKEN || '',
   };
@@ -79803,7 +79807,6 @@ function renownTokens(renownUrl, audience) {
 
 
 
-
 const REAL = {
   actionInputs: actionInputs,
   runContext: runContext,
@@ -79846,7 +79849,7 @@ async function prepareStep(overrides = {}) {
     return outputs;
   }
 
-  const appsToken = d.renownTokens(input.renownUrl, appsAudience(input.vetraUrl));
+  const appsToken = d.renownTokens(input.renownUrl, input.vetraAudience);
   const claim = d.workloadClaim(await appsToken());
   const releaseBranch = run.event === 'push' && claim.releaseBranch === true;
   const publish = d.publishableDirs(config.packageDirs, d.warning).length > 0;
