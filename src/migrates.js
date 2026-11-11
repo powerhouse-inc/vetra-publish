@@ -37,13 +37,17 @@ export function touchesMigrations(files, globs) {
  * migrates from 1.4.0, not from 2.0.0-beta.3).
  */
 export function previousRelease(version, exec = execCmd) {
+  if (versionKind(version) !== 'release') throw new Error(`"${version}" is not a release version`);
   const full = parseVersion(version).prerelease.length === 0;
-  let tags;
-  try {
-    tags = exec('git', ['tag', '--merged', 'HEAD^', '--list', 'v*']).split('\n').map((s) => s.trim()).filter(Boolean);
-  } catch {
-    return null;
+  if (exec('git', ['rev-parse', '--is-shallow-repository']).trim() === 'true') {
+    throw new Error('vetra-publish needs the full git history: use actions/checkout with fetch-depth: 0');
   }
+  try {
+    exec('git', ['rev-parse', '--verify', '--quiet', 'HEAD^']);
+  } catch {
+    return null; // the first commit has no previous release
+  }
+  const tags = exec('git', ['tag', '--merged', 'HEAD^', '--list', 'v*']).split('\n').map((s) => s.trim()).filter(Boolean);
   const earlier = tags
     .map((t) => t.slice(1))
     .filter((v) => versionKind(v) === 'release')

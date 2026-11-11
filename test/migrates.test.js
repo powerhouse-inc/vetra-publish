@@ -17,8 +17,10 @@ test('touchesMigrations with the default folders', () => {
   assert.equal(touchesMigrations(['editors/x.tsx', 'processors/files-index/processor.ts'], DEFAULT_MIGRATIONS), false);
 });
 
+const calls = [];
 const tags = (list) => (cmd, args) => {
   if (args[0] === 'tag') return list.join('\n');
+  if (args[0] === 'diff') calls.push(args.join(' '));
   if (args[0] === 'diff') return `processors/a/migrations.ts\nREADME.md\n`;
   return '';
 };
@@ -28,7 +30,39 @@ test('previousRelease: a full release migrates from the previous full release, a
   assert.equal(previousRelease('2.0.0', exec), 'v1.4.0');
   assert.equal(previousRelease('2.0.0-beta.4', exec), 'v2.0.0-beta.3');
   assert.equal(previousRelease('1.0.0', exec), null);
-  assert.equal(previousRelease('1.0.0', () => { throw new Error('no HEAD^'); }), null);
+});
+
+test('previousRelease: asks git for the tags merged into HEAD^', () => {
+  const calls = [];
+  previousRelease('1.5.0', (cmd, args) => { calls.push(args.join(' ')); return args[0] === 'tag' ? 'v1.4.0' : ''; });
+  assert.ok(calls.includes('tag --merged HEAD^ --list v*'));
+});
+
+test('previousRelease: the first commit (no HEAD^) has no previous release', () => {
+  const exec = (cmd, args) => {
+    if (args[0] === 'rev-parse' && args.includes('--is-shallow-repository')) return 'false';
+    if (args[0] === 'rev-parse') throw new Error('unknown revision HEAD^');
+    return 'v1.0.0';
+  };
+  assert.equal(previousRelease('1.5.0', exec), null);
+});
+
+test('previousRelease: a shallow clone is an error, not a silent no', () => {
+  const exec = (cmd, args) => (args.includes('--is-shallow-repository') ? 'true\n' : '');
+  assert.throws(() => previousRelease('1.5.0', exec), /fetch-depth: 0/);
+});
+
+test('previousRelease: other git errors propagate', () => {
+  const exec = (cmd, args) => {
+    if (args[0] === 'tag') throw new Error('boom');
+    return '';
+  };
+  assert.throws(() => previousRelease('1.5.0', exec), /boom/);
+});
+
+test('previousRelease: rejects a version that is not a release', () => {
+  assert.throws(() => previousRelease('nope', () => ''), /not a release version/);
+  assert.throws(() => previousRelease('1.0.0-main.4', () => ''), /not a release version/);
 });
 
 test('computeMigrates: the config override, then the diff since the previous release', () => {
@@ -37,4 +71,7 @@ test('computeMigrates: the config override, then the diff since the previous rel
   assert.equal(computeMigrates({ version: '1.5.0', config }, tags([])), false);
   assert.equal(computeMigrates({ version: '1.5.0', config: { ...config, migrates: true } }, tags([])), true);
   assert.equal(computeMigrates({ version: '1.5.0', config: { ...config, migrations: ['db/**'] } }, tags(['v1.4.0'])), false);
+  calls.length = 0;
+  computeMigrates({ version: '1.5.0', config }, tags(['v1.4.0']));
+  assert.deepEqual(calls, ['diff --name-only v1.4.0..HEAD']);
 });
