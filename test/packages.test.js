@@ -99,3 +99,17 @@ test('distTagFor: a branch that is a semver range gets the branch- prefix', () =
   assert.equal(t('v2'), 'branch-v2');
   assert.equal(t('feature'), 'feature');
 });
+
+test('a package.json that cannot be read leaks no scratch dir (it holds the registry token)', () => {
+  const tmpdir = fs.mkdtempSync(path.join(os.tmpdir(), 'vp-scratch-'));
+  const saved = process.env.TMPDIR;
+  process.env.TMPDIR = tmpdir;
+  try {
+    const dir = path.join(tmpdir, 'gone');
+    assert.throws(() => publishPackages({ dirs: [{ dir, name: '@acme/gone' }], version: '1.5.0', registryUrl: DEV_REGISTRY, distTag: 'x', token: 't' }, () => '', () => {}), /ENOENT/);
+    assert.deepEqual(fs.readdirSync(tmpdir), []);
+  } finally {
+    if (saved === undefined) delete process.env.TMPDIR;
+    else process.env.TMPDIR = saved;
+  }
+});

@@ -63,14 +63,15 @@ export function publishPackages({ dirs, version, registryUrl, distTag, token }, 
   const registry = registryUrl.replace(/\/+$/, '');
   const published = [];
   for (const { dir, name } of dirs) {
-    // The token file lives outside the package dir so that `pnpm pack` can never ship it.
-    const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'vetra-publish-'));
-    const npmrc = path.join(scratch, '.npmrc');
-    fs.writeFileSync(npmrc, `//${registry.replace(/^https?:\/\//, '')}/:_authToken=${token}\nregistry=${registry}/\n`, { mode: 0o600 });
     const pkgFile = path.join(dir, 'package.json');
     const original = fs.readFileSync(pkgFile, 'utf8');
     let tarball = null;
+    let scratch = null;
     try {
+      // The token file lives outside the package dir so that `pnpm pack` can never ship it.
+      scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'vetra-publish-'));
+      const npmrc = path.join(scratch, '.npmrc');
+      fs.writeFileSync(npmrc, `//${registry.replace(/^https?:\/\//, '')}/:_authToken=${token}\nregistry=${registry}/\n`, { mode: 0o600 });
       let already = '';
       try {
         already = exec('npm', ['view', `${name}@${version}`, 'version', '--registry', registry, '--userconfig', npmrc], { cwd: dir }).trim();
@@ -88,7 +89,7 @@ export function publishPackages({ dirs, version, registryUrl, distTag, token }, 
     } finally {
       fs.writeFileSync(pkgFile, original);
       if (tarball) fs.rmSync(tarball, { force: true });
-      fs.rmSync(scratch, { recursive: true, force: true });
+      if (scratch) fs.rmSync(scratch, { recursive: true, force: true });
     }
   }
   return published;

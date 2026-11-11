@@ -3826,14 +3826,15 @@ function publishPackages({ dirs, version, registryUrl, distTag, token }, exec = 
   const registry = registryUrl.replace(/\/+$/, '');
   const published = [];
   for (const { dir, name } of dirs) {
-    // The token file lives outside the package dir so that `pnpm pack` can never ship it.
-    const scratch = external_node_fs_namespaceObject.mkdtempSync(external_node_path_namespaceObject.join(external_node_os_namespaceObject.tmpdir(), 'vetra-publish-'));
-    const npmrc = external_node_path_namespaceObject.join(scratch, '.npmrc');
-    external_node_fs_namespaceObject.writeFileSync(npmrc, `//${registry.replace(/^https?:\/\//, '')}/:_authToken=${token}\nregistry=${registry}/\n`, { mode: 0o600 });
     const pkgFile = external_node_path_namespaceObject.join(dir, 'package.json');
     const original = external_node_fs_namespaceObject.readFileSync(pkgFile, 'utf8');
     let tarball = null;
+    let scratch = null;
     try {
+      // The token file lives outside the package dir so that `pnpm pack` can never ship it.
+      scratch = external_node_fs_namespaceObject.mkdtempSync(external_node_path_namespaceObject.join(external_node_os_namespaceObject.tmpdir(), 'vetra-publish-'));
+      const npmrc = external_node_path_namespaceObject.join(scratch, '.npmrc');
+      external_node_fs_namespaceObject.writeFileSync(npmrc, `//${registry.replace(/^https?:\/\//, '')}/:_authToken=${token}\nregistry=${registry}/\n`, { mode: 0o600 });
       let already = '';
       try {
         already = exec('npm', ['view', `${name}@${version}`, 'version', '--registry', registry, '--userconfig', npmrc], { cwd: dir }).trim();
@@ -3851,7 +3852,7 @@ function publishPackages({ dirs, version, registryUrl, distTag, token }, exec = 
     } finally {
       external_node_fs_namespaceObject.writeFileSync(pkgFile, original);
       if (tarball) external_node_fs_namespaceObject.rmSync(tarball, { force: true });
-      external_node_fs_namespaceObject.rmSync(scratch, { recursive: true, force: true });
+      if (scratch) external_node_fs_namespaceObject.rmSync(scratch, { recursive: true, force: true });
     }
   }
   return published;
